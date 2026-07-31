@@ -1,0 +1,28 @@
+# 4.0" 320x480 SPI TFT (ST7796) + the LVGL display binding. 
+substitutions:
+  # Display dimensions - used for the LVGL display buffer size and for the clock widget
+  clock_width: "480"
+  clock_height: "320"
+spi:
+  clk_pin: ${clk_pin}
+  mosi_pin: ${mosi_pin}
+  miso_pin: ${miso_pin}
+  
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: "ST7796"
+    data_rate: 80MHz
+    draw_rounding: 4
+    reset_pin: ${reset_pin}
+    cs_pin: ${cs_pin}
+    dc_pin: ${dc_pin}
+    dimensions:
+      width: 320
+      height: 480
+
+lvgl:
+  displays: [my_display]
+  rotation: 90
+  bg_color: 0x000000

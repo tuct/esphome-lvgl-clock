@@ -1,0 +1,31 @@
+# 1.69" 240x280 SPI TFT (ST7789V2) + the LVGL display binding. No MISO line;
+# the panel sits 20px down in the controller's 240x320 frame buffer, hence
+# `offset_height: 20`, and it needs `invert_colors: true`.
+# The panel this was written for: https://amzn.to/4fzuExq
+substitutions:
+  # Display dimensions - used for the LVGL display buffer size and for the clock widget
+  clock_width: "280"
+  clock_height: "240"
+spi:
+  clk_pin: ${clk_pin}
+  mosi_pin: ${mosi_pin}
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: "ST7789V"
+    data_rate: 80MHz
+    reset_pin: ${reset_pin}
+    cs_pin: ${cs_pin}
+    dc_pin: ${dc_pin}
+    invert_colors: true
+    
+    dimensions:
+      width: 240
+      height: 280
+      offset_height: 20
+
+lvgl:
+  displays: [my_display]
+  rotation: 90
+  bg_color: 0x000000

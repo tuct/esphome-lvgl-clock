@@ -6,17 +6,16 @@ esphome:
   name: lvgl-clock-digital-12h
 
 packages:
-  base: !include common_base.yaml
-  lvgl_colors: !include common_lvgl.yaml
-  display: !include tft_big.yaml
+  base: !include common_base_esp32_s3_devkit.yaml
+  display: !include common_tft_4_0_spi_st7796_320_480.yaml
 
 lvgl:
   widgets:
     - lvgl_clock:
         id: dc
         time_id: sntp_time
-        width: 480
-        height: 320
+        width: ${clock_width}
+        height: ${clock_height}
         align: CENTER
         style: digital
         foreground: cc_hands

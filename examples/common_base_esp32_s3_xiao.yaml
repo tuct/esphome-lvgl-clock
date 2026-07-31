@@ -1,0 +1,69 @@
+# Shared hardware/network boilerplate for the lvgl_clock example_*.yaml
+# configs, on a Seeed Studio XIAO ESP32-S3 (8 MB PSRAM). Same contents as
+# common_base_esp32_s3_devkit.yaml - only the board and the pin substitutions
+# differ - so an example swaps between them by changing the `base:` include.
+#
+# Pins are given as the XIAO's silkscreen labels -> GPIO:
+#   D8 = GPIO7 (SCK), D9 = GPIO8 (MISO), D10 = GPIO9 (MOSI),
+#   D1 = GPIO2 (CS), D2 = GPIO3 (DC), D3 = GPIO4 (RESET)
+
+substitutions:
+  # Pins for the SPI bus used to drive the display
+  clk_pin: "GPIO7"    # D8
+  mosi_pin: "GPIO9"   # D10
+  miso_pin: "GPIO8"   # D9
+  # Pins for the display itself
+  reset_pin: "GPIO4"  # D3
+  cs_pin: "GPIO2"     # D1
+  dc_pin: "GPIO3"     # D2
+
+esp32:
+  board: seeed_xiao_esp32s3
+  framework:
+    type: esp-idf
+
+# The XIAO ESP32-S3 carries 8 MB of octal PSRAM - required for LVGL at the
+# larger panel sizes.
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret api_key
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+external_components:
+  - source: ../components
+    components: [lvgl_clock]
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+
+# marker only - enables the lvgl_clock widget, takes no options itself.
+lvgl_clock:
+
+# Shared colour palette for the lvgl_clock example_*.yaml configs.
+
+color:
+  - id: cc_hands
+    red: 100%
+    green: 100%
+    blue: 100%
+  - id: cc_bg
+    red: 0%
+    green: 0%
+    blue: 0%
+  - id: cc_faces  # unlit "ghost" segments / little-clock faces
+    red: 12%
+    green: 12%
+    blue: 14%

@@ -6,15 +6,28 @@ and redraws itself — no `interval:` + lambda glue needed. Pick a **style**:
 
 | `style` | preview | what it looks like |
 | --- | --- | --- |
-| **clockclock24** *(default)* | <img src="./docs/clockclock24.gif" width="240"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` idle animations. |
-| **analog** | <img src="./docs/analog.gif" width="240"> | A classic analogue clock face — independently configurable ticks and per-hand style/colour (see below). |
-| **digital** | <img src="./docs/digital.gif" width="240"> | `HH:MM(:SS)` as a **7-segment** display with a "ghost 8", optional blinking colon, and an AM/PM column in 12h mode. |
-| **flipclock** | <img src="./docs/flipclock.gif" width="240"> | `HH:MM(:SS)` as **split-flap cards** with real font-rendered digits and an animated flip on every change ([flipclock.js](https://flipclockjs.com/) look). |
-| **seg_matrix** | <img src="./docs/seg_matrix.gif" width="240"> | Big `HH:MM` digits drawn on a grid of **small 7-segment displays** — each little display's segments act as pixels of the large numerals (a [7-segment display array](https://hackaday.io/project/169632-7-segment-display-array-clock)). Best on a wide panel. |
+| [**clockclock24**](#style-clockclock24) *(default)* | <img src="./docs/clockclock24.gif" width="200"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` idle animations. |
+| [**analog**](#style-analog) | <img src="./docs/analog.gif" width="160"> | A classic analogue clock face — independently configurable ticks and per-hand style/colour. |
+| [**digital**](#style-digital) | <img src="./docs/digital.gif" width="200"> | `HH:MM(:SS)` as a **7-segment** display with a "ghost 8", optional blinking colon, and an AM/PM column in 12h mode. |
+| [**flipclock**](#style-flipclock) | <img src="./docs/flipclock.gif" width="200"> | `HH:MM(:SS)` as **split-flap cards** with real font-rendered digits and an animated flip on every change ([flipclock.js](https://flipclockjs.com/) look). |
+| [**seg_matrix**](#style-seg_matrix) | <img src="./docs/seg_matrix.gif" width="200"> | Big `HH:MM` digits drawn on a grid of **small 7-segment displays** — each little display's segments act as pixels of the large numerals (a [7-segment display array](https://hackaday.io/project/169632-7-segment-display-array-clock)). Best on a wide panel. |
 
 *Previews rendered with [`tools/gifgen`](./tools/gifgen) — the real component
 drawing run headless against desktop LVGL, so they're pixel-identical to the
 device.*
+
+## Contents
+
+- [Usage](#usage) — the minimal config
+- [Shared options](#shared-options) — what every style understands
+- Styles — preview, options and examples per type:
+  [clockclock24](#style-clockclock24) · [analog](#style-analog) ·
+  [digital](#style-digital) · [flipclock](#style-flipclock) ·
+  [seg_matrix](#style-seg_matrix)
+- [Examples and hardware](#examples-and-hardware) — ready-to-flash configs,
+  the [boards](#boards) and [panels](#display-panels) they run on, and the
+  shared packages that wire them up
+- [Resolution](#resolution) and [PSRAM](#psram-large-displays) — sizing the canvas
 
 ## Usage
 
@@ -45,32 +58,14 @@ lvgl:
         show_seconds: true
 ```
 
-See [`example_clockclock24.yaml`](./examples/example_clockclock24.yaml) for a full
-working config (display + LVGL setup + boot-phase idle animations). There's
-one per style - [`example_clockclock24.yaml`](./examples/example_clockclock24.yaml)
-(clockclock24), [`example_analog.yaml`](./examples/example_analog.yaml)
-(plus [`example_analog_sbb.yaml`](./examples/example_analog_sbb.yaml), a Mondaine/SBB
-showcase), [`example_digital.yaml`](./examples/example_digital.yaml),
-[`example_flipclock.yaml`](./examples/example_flipclock.yaml),
-[`example_seg_matrix.yaml`](./examples/example_seg_matrix.yaml) - plus the 12-hour /
-no-seconds AM/PM variants
-[`example_digital_12h.yaml`](./examples/example_digital_12h.yaml) and
-[`example_flipclock_12h.yaml`](./examples/example_flipclock_12h.yaml), and
-[`example_clockclock24_demo.yaml`](./examples/example_clockclock24_demo.yaml) for the
-clockclock24 test mode below. They share their hardware/network setup via
-[`common_base.yaml`](./examples/common_base.yaml) and their LVGL/colour setup via
-[`common_lvgl.yaml`](./examples/common_lvgl.yaml), pulled in with `packages:` +
-`!include` - each example itself is just its `esphome: name:` plus the
-`lvgl: widgets: - lvgl_clock: ...` block for that style.
-
 Position and size (`x`, `y`, `width`, `height`, `align`, ...) are ordinary
 LVGL widget properties — set them like on any other widget. `width`/`height`
 are required here (used to size the canvas buffer).
 
 The **style is chosen by the `style:` key** — `clockclock24` / `analog` /
-`digital` / `flipclock`. If omitted, it's inferred from whichever one style
-sub-block (`clockclock24:` / `analog:` / `digital:` / `flipclock:`) you
-provide, defaulting to `clockclock24` if none are given.
+`digital` / `flipclock` / `seg_matrix`. If omitted, it's inferred from
+whichever one style sub-block (`clockclock24:` / `analog:` / ...) you provide,
+defaulting to `clockclock24` if none are given.
 
 ## Shared options
 
@@ -78,7 +73,7 @@ provide, defaulting to `clockclock24` if none are given.
 | --- | --- | --- |
 | `time_id` | *(required)* | A `time:` component. |
 | `width` / `height` | *(required)* | Canvas size in px. |
-| `style` | `clockclock24` | `clockclock24`, `analog`, `digital`, or `flipclock`. |
+| `style` | `clockclock24` | `clockclock24`, `analog`, `digital`, `flipclock`, or `seg_matrix`. |
 | `twenty_four_hour` | `true` | `false` = 1–12. enables am/pm on `digital`, or `flipclock`.  |
 | `show_seconds` | `false` | Adds `:SS` (`digital`/`flipclock`) or a sweeping second hand (`analog`). **No-op for `clockclock24`** — the physical ClockClock 24 has no seconds display. |
 | `render_interval` | `16ms` | How often the widget redraws itself (~60 fps). |
@@ -143,6 +138,8 @@ shrink the canvas or add PSRAM.
 
 ## `style: clockclock24`
 
+<img src="./docs/clockclock24.gif" width="360">
+
 ```yaml
 clockclock24:
   hand_width: 1             # base hand thickness (px)
@@ -156,6 +153,9 @@ clockclock24:
   face_color: ...             # little-clock fill (needs show_face)
   border_color: ...           # little-clock rim (needs show_face)
 ```
+
+Examples: [`example_clockclock24.yaml`](./examples/example_clockclock24.yaml),
+[`example_clockclock24_demo.yaml`](./examples/example_clockclock24_demo.yaml).
 
 Each mini-clock has two hands, and `movement` controls which direction each
 takes to reach its new target angle:
@@ -183,10 +183,7 @@ config that boots straight into it.
 
 ## `style: analog`
 
-Continuous sweep — all hands glide (no ticking or stop-to-go pause). Hands and
-ticks are independently configurable, so this one style covers everything
-from a bare minimalist face (no ticks, thin second hand) to a fully ticked
-watch face:
+<img src="./docs/analog.gif" width="280">
 
 ```yaml
 analog:
@@ -222,6 +219,15 @@ analog:
     extend: 20%                # a short counterweight tail, like a real second hand
 ```
 
+Examples: [`example_analog.yaml`](./examples/example_analog.yaml),
+[`example_analog_sbb.yaml`](./examples/example_analog_sbb.yaml) (Mondaine/SBB
+showcase).
+
+Continuous sweep — all hands glide (no ticking or stop-to-go pause). Hands and
+ticks are independently configurable, so this one style covers everything
+from a bare minimalist face (no ticks, thin second hand) to a fully ticked
+watch face.
+
 `minute_ticks`/`hour_ticks` are independent: `enabled` toggles that ring on/off
 (if `hour_ticks.enabled: false` but `minute_ticks.enabled: true`, the minute
 styling fills in at the hour positions too, so you still get a full ring
@@ -251,12 +257,9 @@ Each hand is fully independent:
 - `extend` stretches the hand a little past the pivot on the *opposite* side
   (max 50%) — e.g. the second hand's small counterweight tail.
 
-`minute_ticks`/`hour_ticks` toggle the two tick rings separately, each with
-its own colour and rounded override.
-
 ## `style: digital`
 
-Self-contained **7-segment** display — no font needed.
+<img src="./docs/digital.gif" width="360">
 
 ```yaml
 digital:
@@ -265,6 +268,11 @@ digital:
   blank_leading_zero: false  # hide the leading hour zero
   off_color: ...             # colour of *unlit* segments - the classic "ghost 8"
 ```
+
+Examples: [`example_digital.yaml`](./examples/example_digital.yaml),
+[`example_digital_12h.yaml`](./examples/example_digital_12h.yaml).
+
+Self-contained **7-segment** display — no font needed.
 
 `segment_style` picks the shape of each of the 7 bars: `classic` *(default)*
 tapers each end to a point — the traditional LCD/calculator look. `rounded`
@@ -277,16 +285,14 @@ one lit and the other shown in the `off_color` ghost. The letters are drawn
 as vector strokes (no font needed) and auto-scale with the widget like the
 digits themselves.
 
-![digital 7-segment in 12h mode with an AM/PM column, rolling over noon](./docs/digital_12h.gif)
+<img src="./docs/digital_12h.gif" width="360">
 
-See [`example_digital_12h.yaml`](./examples/example_digital_12h.yaml).
+*12h mode with the AM/PM column, rolling over noon —
+[`example_digital_12h.yaml`](./examples/example_digital_12h.yaml).*
 
 ## `style: flipclock`
 
-Split-flap ("Solari") cards, one digit per card, with a horizontal seam and
-an animated flip on every digit change — the [flipclock.js](https://flipclockjs.com/)
-look. Unlike `digital` this renders **real font glyphs**, so a `font:` is
-required:
+<img src="./docs/flipclock.gif" width="360">
 
 ```yaml
 flipclock:
@@ -298,6 +304,14 @@ flipclock:
   show_dots: true            # false = no divider dots, just a gap between groups
   am_pm_font: montserrat_14  # 12h mode only - small AM/PM marker font
 ```
+
+Examples: [`example_flipclock.yaml`](./examples/example_flipclock.yaml),
+[`example_flipclock_12h.yaml`](./examples/example_flipclock_12h.yaml).
+
+Split-flap ("Solari") cards, one digit per card, with a horizontal seam and
+an animated flip on every digit change — the [flipclock.js](https://flipclockjs.com/)
+look. Unlike `digital` this renders **real font glyphs**, so a `font:` is
+required.
 
 - `font` takes either a **built-in LVGL font** (`montserrat_8` …
   `montserrat_48` — the validator enables it in the LVGL build
@@ -321,17 +335,14 @@ flipclock:
   centred in the lower half of the card — `am_pm_font` sizes its two-letter
   text (any built-in LVGL font or ESPHome `font:` id; defaults to a small one).
 
-![flipclock in 12h mode with a dedicated AM/PM card, flipping over noon](./docs/flipclock_12h.gif)
+<img src="./docs/flipclock_12h.gif" width="360">
 
-See [`example_flipclock_12h.yaml`](./examples/example_flipclock_12h.yaml).
+*12h mode with the dedicated AM/PM card, flipping over noon —
+[`example_flipclock_12h.yaml`](./examples/example_flipclock_12h.yaml).*
 
 ## `style: seg_matrix`
 
-Big `HH:MM` digits drawn on a fixed **6×24 grid of small 7-segment displays**,
-using the hand-crafted segment font from the
-[7-segment display array clock](https://hackaday.io/project/169632-7-segment-display-array-clock)
-(ported verbatim) — each small display shows the exact segment pattern that
-builds up the large numerals, with the rest of the grid as an unlit ghost.
+<img src="./docs/seg_matrix.gif" width="480">
 
 ```yaml
 seg_matrix:
@@ -339,10 +350,145 @@ seg_matrix:
   off_color: ...             # colour of the unlit ghost grid (default dark)
 ```
 
+Example: [`example_seg_matrix.yaml`](./examples/example_seg_matrix.yaml).
+
+Big `HH:MM` digits drawn on a fixed **6×24 grid of small 7-segment displays**,
+using the hand-crafted segment font from the
+[7-segment display array clock](https://hackaday.io/project/169632-7-segment-display-array-clock)
+(ported verbatim) — each small display shows the exact segment pattern that
+builds up the large numerals, with the rest of the grid as an unlit ghost.
+
 `foreground` is the lit colour and `off_color` the ghost grid. The grid and
 font are fixed at the reference **6×24** (so it's a **wide** layout, ~4:1) —
 each small display keeps its 7-segment aspect ratio and is centred in its cell,
 so on a squarer display they just get larger and more spaced out.
+
+## Examples and hardware
+
+The configs linked from each style above live in [`examples/`](./examples) —
+one ready-to-flash file per style. Each is deliberately tiny (just its
+`esphome: name:` plus the `lvgl: widgets: - lvgl_clock: ...` block for that
+style) because the board and the panel come in via `packages:` + `!include`
+from two shared files — pick one of each:
+
+```yaml
+packages:
+  base: !include common_base_esp32_s3_devkit.yaml            # <- the board
+  display: !include common_tft_4_0_spi_st7796_320_480.yaml   # <- the panel
+```
+
+> **The hardware below is only what these packages were tested on — not a
+> compatibility list.** `lvgl_clock` is a plain LVGL widget drawing into its
+> own canvas, so it runs on **any ESP32 variant and any display ESPHome's
+> [LVGL component](https://esphome.io/components/lvgl/) can drive** — SPI,
+> parallel/RGB, big or small. The packages just save you writing the
+> boilerplate for the combinations that were on the bench.
+
+### Boards
+
+Tested on the two below; **any ESPHome-supported ESP32 works**. The one thing
+that matters is RAM: the clock's canvas is `width × height × 2` bytes, so a
+480×320 face alone is ~300 KB — more than a plain ESP32's internal RAM, and
+LVGL still needs its own buffers on top. Hence the recommendation of an
+**ESP32-S3 with PSRAM** for larger panels; a classic ESP32 without PSRAM is
+fine for the small ones.
+
+| | Board | Base package | Notes |
+| --- | --- | --- | --- |
+| <img src="./docs/hw/esp32_s3_devkitc1.png" width="150"> | **ESP32-S3-DevKitC-1** (N16R8) — [buy](https://amzn.to/45yvsfR) | [`common_base_esp32_s3_devkit.yaml`](./examples/common_base_esp32_s3_devkit.yaml) | 16 MB flash, 8 MB octal PSRAM, every GPIO on a header. What all the examples ship with, and the easiest to wire up. |
+| <img src="./docs/hw/xiao_esp32s3.png" width="150"> | **Seeed Studio XIAO ESP32-S3** — [buy](https://amzn.to/4bp2pPv) | [`common_base_esp32_s3_xiao.yaml`](./examples/common_base_esp32_s3_xiao.yaml) | Thumbnail-sized (21×17.5 mm) with the same 8 MB PSRAM — the one to use when the clock has to disappear into an enclosure. Fewer pins, so the package uses the XIAO's SPI header: D8/D10/D9 for CLK/MOSI/MISO, D1/D2/D3 for CS/DC/RESET. |
+
+The two packages are identical apart from the `board:` and the pin
+substitutions, so switching is a one-line change to `base:`. Porting to a
+third board is the same edit — copy one, change the `board:` and the six pin
+substitutions.
+
+### Display panels
+
+Again, three *tested* panels, not a limit — anything LVGL can drive will do.
+These happen to be `mipi_spi` modules on the same four-wire bus, named
+`common_tft_<size>_<bus>_<chip>_<native resolution>.yaml`, each shipping its
+own [size substitutions](#substitutions):
+
+| | Panel | Package | Landscape size | Notes |
+| --- | --- | --- | --- | --- |
+| <img src="./docs/hw/tft_4_0_st7796.png" width="150"> | **4.0" ST7796**, 320×480 — [buy](https://amzn.to/4fQuHnl) | [`common_tft_4_0_spi_st7796_320_480.yaml`](./examples/common_tft_4_0_spi_st7796_320_480.yaml) | **480×320** | The big one — the only panel with room for `seg_matrix` and for `flipclock` at a 100 px font. 80 MHz `data_rate`, `draw_rounding: 4`. What every example ships with. |
+| <img src="./docs/hw/tft_1_69_st7789v2.png" width="150"> | **1.69" ST7789V2**, 240×280 — [buy](https://amzn.to/4fzuExq) | [`common_tft_1_69_spi_st7789v2_240_280.yaml`](./examples/common_tft_1_69_spi_st7789v2_240_280.yaml) | **280×240** | Rounded-corner IPS module, 48×30 mm — a nice desk clock. No MISO; needs `invert_colors: true` and `offset_height: 20` (the glass sits 20 px down in the controller's 240×320 frame buffer), both already in the package. |
+| <img src="./docs/hw/tft_1_8_st7735.png" width="150"> | **1.8" ST7735**, 128×160 — [buy](https://amzn.to/4pReNh6) | [`common_tft_1_8_spi_st7735_128_160.yaml`](./examples/common_tft_1_8_spi_st7735_128_160.yaml) | **160×128** | The cheap classic. No MISO line. Fine for `analog`, `digital` and `clockclock24`; too small for `seg_matrix`. |
+
+Each file is a plain ESPHome
+[`display:`](https://esphome.io/components/display/) config, so adding your own
+panel means copying whichever ESPHome config it already ships with and keeping
+three things: `id: my_display`, the `lvgl:` binding, and the two size
+substitutions. Nothing in the widget cares which controller is underneath — it
+scales to whatever canvas you give it, though it can't be larger than the
+screen; see [Resolution](#resolution) for the practical minimum per style. The
+canvas is allocated as RGB565 (or ARGB8888 when `transparent:`), so a colour
+LVGL build is assumed; monochrome and e-paper panels are untested, and a slow
+panel wants a much slower `render_interval:` than the 16 ms default either way.
+
+### What each package provides
+
+| File | What it provides |
+| --- | --- |
+| a **base** (`common_base_*.yaml`) | Everything that isn't the panel: the board and framework, `psram:`, `wifi:` / `api:` / `ota:` / `logger:`, the `external_components:` pointer at `../components`, the `time: sntp` source (`id: sntp_time`), the bare `lvgl_clock:` marker key, the shared `color:` palette — `cc_hands` (white ink), `cc_bg` (black), `cc_faces` (the dark "ghost"/face grey) — and the **pin** substitutions. |
+| a **display** (`common_tft_*.yaml`) | The `spi:` bus, the `display:` component (always `id: my_display`), the `lvgl:` binding for it (`displays:`, `rotation: 90`, black `bg_color`) and the **size** substitutions. Pins come from the base, so a panel file has no hard-coded GPIOs. |
+
+`packages:` merges dicts key-by-key, so the display file's `lvgl:` keys and the
+example's own `lvgl: widgets:` key combine into a single `lvgl:` block — which
+is why swapping hardware is a one-line edit.
+
+### Substitutions
+
+The pins and the clock size are each declared once and read everywhere else,
+so nothing is duplicated between the panel and the widget:
+
+| Substitution | Declared in | Default | Used by |
+| --- | --- | --- | --- |
+| `clk_pin` / `mosi_pin` / `miso_pin` | the base | `GPIO18` / `GPIO13` / `GPIO12` | the display file's `spi:` bus |
+| `reset_pin` / `cs_pin` / `dc_pin` | the base | `GPIO04` / `GPIO16` / `GPIO17` | the display file's `display:` |
+| `clock_width` / `clock_height` | **the display file** | that panel's landscape size | the `lvgl_clock` widget's `width:` / `height:` |
+
+`clock_width`/`clock_height` live in the display file, so they always describe
+the panel you actually included — swapping the `display:` line resizes the
+clock with it, no second edit. The square-faced analog examples deliberately
+use `${clock_height}` for *both* sides, so the dial stays round on a landscape
+panel.
+
+Override any substitution with a top-level `substitutions:` block in the
+example (the outer file wins over a package's), e.g. to rewire the bus:
+
+```yaml
+substitutions:
+  mosi_pin: "GPIO11"
+  clk_pin: "GPIO12"
+```
+
+### The examples
+
+All of them ship on the 4.0" ST7796, i.e. a 480×320 canvas. "Widget size" is
+the `width`/`height` on the `lvgl_clock` widget itself:
+
+| Example | Style | Widget size | What it shows |
+| --- | --- | --- | --- |
+| [`example_clockclock24.yaml`](./examples/example_clockclock24.yaml) | clockclock24 | full screen | The full boot sequence: `rotate_left` while Wi-Fi connects, `flying_birds` while waiting for NTP, then the time — driven from an `interval:` with the mode actions. |
+| [`example_clockclock24_demo.yaml`](./examples/example_clockclock24_demo.yaml) | clockclock24 | full screen | Boots straight into `mode: demo` so the digit-flip animation repeats every 5 s instead of once a minute. Handy for trying out the `movement:` options. |
+| [`example_analog.yaml`](./examples/example_analog.yaml) | analog | square (320×320) | Every analog option at once, plus `transparent: true` with a plain LVGL `label:` **behind** the face showing the date through the gaps. |
+| [`example_analog_sbb.yaml`](./examples/example_analog_sbb.yaml) | analog | square (320×320) | The Mondaine/SBB Swiss railway look: black-on-white, `sbb` hands, `lollipop` second hand. |
+| [`example_digital.yaml`](./examples/example_digital.yaml) | digital | full screen | 24 h `HH:MM` 7-segment with a blinking colon and the ghost 8. |
+| [`example_digital_12h.yaml`](./examples/example_digital_12h.yaml) | digital | full screen | Same in 12 h mode — adds the vector-drawn AM/PM marker column. |
+| [`example_flipclock.yaml`](./examples/example_flipclock.yaml) | flipclock | full screen | Split-flap cards with a Google-font TTF (`font:` at `size: 100`) — the recommended way to get large crisp digits. |
+| [`example_flipclock_12h.yaml`](./examples/example_flipclock_12h.yaml) | flipclock | full screen | Same in 12 h mode — adds the dedicated AM/PM flap card. |
+| [`example_seg_matrix.yaml`](./examples/example_seg_matrix.yaml) | seg_matrix | full screen | The 6×24 grid of small 7-segment displays with a dark red ghost grid. |
+
+The examples read Wi-Fi/API/OTA credentials from `secrets.yaml` — copy
+[`secrets.yaml.example`](./examples/secrets.yaml.example) to
+`examples/secrets.yaml` and fill it in. Then:
+
+```bash
+esphome compile examples/example_clockclock24.yaml
+esphome run     examples/example_clockclock24.yaml
+```
 
 ## Resolution
 

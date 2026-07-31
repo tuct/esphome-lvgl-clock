@@ -2,6 +2,16 @@
 # configs. Included via `packages:` - each example adds its own `esphome:`
 # name and `lvgl: widgets: - lvgl_clock: ...` on top.
 
+substitutions:
+  # Pins for the SPI bus used to drive the display
+  clk_pin: "GPIO18"
+  mosi_pin: "GPIO13"
+  miso_pin: "GPIO12"
+  # Pins for the display itself
+  reset_pin: "GPIO04"
+  cs_pin: "GPIO16"
+  dc_pin: "GPIO17"
+
 esp32:
   board: esp32-s3-devkitc1-n16r8
   framework:
@@ -35,25 +45,20 @@ time:
 
 # marker only - enables the lvgl_clock widget, takes no options itself.
 lvgl_clock:
-#debug:
-#  update_interval: 5s
-#sensor:
-#  - platform: debug
-#    free:
-#      name: "Heap Free"
-#    block:
-#      name: "Heap Max Block"
-#    min_free:
-#      name: "Heap Min Free"
-#    fragmentation:
-#      name: "Heap Fragmentation"
-#    loop_time:
-#      name: "Loop Time"
-#    cpu_frequency:
-#      name: "CPU Frequency"
 
-#interval:
-#  - interval: 5s
-#    then:
-#      - lambda: |-
-#          ESP_LOGD("mem", "Free Heap Memory: %u bytes", (unsigned) esp_get_free_heap_size());
+# Shared colour palette for the lvgl_clock example_*.yaml
+# configs. 
+
+color:
+  - id: cc_hands
+    red: 100%
+    green: 100%
+    blue: 100%
+  - id: cc_bg
+    red: 0%
+    green: 0%
+    blue: 0%
+  - id: cc_faces  # unlit "ghost" segments / little-clock faces
+    red: 12%
+    green: 12%
+    blue: 14%

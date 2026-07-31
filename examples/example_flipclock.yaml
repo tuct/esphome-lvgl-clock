@@ -7,9 +7,8 @@ esphome:
   name: lvgl-clock-flipclock
 
 packages:
-  base: !include common_base.yaml
-  lvgl_colors: !include common_lvgl.yaml
-  display: !include tft_big.yaml
+  base: !include common_base_esp32_s3_devkit.yaml
+  display: !include common_tft_4_0_spi_st7796_320_480.yaml
 
 color:
   - id: cc_card
@@ -34,8 +33,8 @@ lvgl:
     - lvgl_clock:
         id: dc
         time_id: sntp_time
-        width: 480
-        height: 320
+        width: ${clock_width}
+        height: ${clock_height}
         align: CENTER
         style: flipclock
         twenty_four_hour: true        # false = 1-12

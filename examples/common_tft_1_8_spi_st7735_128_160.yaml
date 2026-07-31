@@ -1,0 +1,27 @@
+# 1.8" 128x160 SPI TFT (ST7735) + the LVGL display binding. 
+substitutions:
+  # Display dimensions - used for the LVGL display buffer size and for the clock widget
+  clock_width: "160"
+  clock_height: "128"
+
+spi:
+  clk_pin: ${clk_pin}
+  mosi_pin: ${mosi_pin}
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: "ST7735"
+    data_rate: 80MHz
+    reset_pin: ${reset_pin}
+    cs_pin: ${cs_pin}
+    dc_pin: ${dc_pin}
+    rotation: 0
+    dimensions:
+      width: 128
+      height: 160
+
+lvgl:
+  displays: [my_display]
+  rotation: 90
+  bg_color: 0x000000
