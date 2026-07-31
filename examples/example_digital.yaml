@@ -1,0 +1,28 @@
+# lvgl_clock - style: digital, self-contained 7-segment display.
+# Compile:  esphome compile examples/example_digital.yaml
+
+esphome:
+  name: lvgl-clock-digital
+
+packages:
+  base: !include common_base.yaml
+  lvgl_colors: !include common_lvgl.yaml
+  display: !include tft_big.yaml
+
+lvgl:
+  widgets:
+    - lvgl_clock:
+        id: dc
+        time_id: sntp_time
+        width: 480
+        height: 320
+        align: CENTER
+        style: digital
+        foreground: cc_hands
+        background: cc_bg
+        show_seconds: false
+        twenty_four_hour: true        # false = 1-12, add am/pm to digital and flipclock
+        digital:
+          segment_style: classic  # classic (tapered LCD) | rounded (capsule ends)
+          blink: true
+          blank_leading_zero: false

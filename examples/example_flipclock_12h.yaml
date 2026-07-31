@@ -1,0 +1,46 @@
+# lvgl_clock - style: flipclock in 12-hour mode, no seconds. 12h mode adds
+# a dedicated AM/PM split-flap card in front of the hours (sized by am_pm_font).
+# Compile:  esphome compile examples/example_flipclock_12h.yaml
+
+esphome:
+  name: lvgl-clock-flipclock-12h
+
+packages:
+  base: !include common_base.yaml
+  lvgl_colors: !include common_lvgl.yaml
+  display: !include tft_big.yaml
+
+color:
+  - id: cc_card
+    red: 16%
+    green: 16%
+    blue: 16%
+
+# Digit font: any ESPHome font: (a TTF at any size) or a built-in LVGL
+# montserrat_*. Give an ESPHome font an id that is NOT a built-in font name.
+font:
+  - file: "gfonts://Archivo+Black@400"
+    id: flip_font
+    size: 100                          # digit height in px
+    glyphs: "0123456789"               # digits only; AM/PM uses am_pm_font
+
+lvgl:
+  widgets:
+    - lvgl_clock:
+        id: dc
+        time_id: sntp_time
+        width: 480
+        height: 320
+        align: CENTER
+        style: flipclock
+        foreground: cc_hands          # digit colour
+        background: cc_bg             # behind the cards + the seam line
+        show_seconds: false           # HH:MM only
+        twenty_four_hour: false       # 1-12 + a dedicated AM/PM card up front
+        flipclock:
+          font: flip_font
+          card_color: cc_card         # card fill (defaults to a dark grey)
+          flip_duration: 450ms        # one digit flip; 0 = no animation
+          blank_leading_zero: false
+          show_dots: true
+          am_pm_font: montserrat_24   # AM/PM card text (built-in or a font: id)

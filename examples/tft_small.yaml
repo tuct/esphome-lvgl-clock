@@ -1,0 +1,14 @@
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: "ST7735"
+    reset_pin: GPIO04
+    cs_pin: GPIO16
+    dc_pin: GPIO17
+    rotation: 0
+    dimensions:
+      width: 128
+      height: 160

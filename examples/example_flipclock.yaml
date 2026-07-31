@@ -1,0 +1,51 @@
+# lvgl_clock - style: flipclock, split-flap cards with font-rendered digits
+# (https://flipclockjs.com look). The font drives the digit size - pick one
+# that fits your card size (built-in LVGL montserrat_* or an ESPHome font:).
+# Compile:  esphome compile examples/example_flipclock.yaml
+
+esphome:
+  name: lvgl-clock-flipclock
+
+packages:
+  base: !include common_base.yaml
+  lvgl_colors: !include common_lvgl.yaml
+  display: !include tft_big.yaml
+
+color:
+  - id: cc_card
+    red: 16%
+    green: 16%
+    blue: 16%
+
+# Built-in LVGL fonts stop at montserrat_48. For bigger, crisp digits use an
+# ESPHome font: component (a TTF rendered at any size). Give it an id that is
+# NOT a built-in LVGL font name (e.g. not "montserrat_48") - the flipclock
+# `font:` validator matches built-in names first, so a colliding id would be
+# silently ignored. Set `size:` explicitly (ESPHome fonts default to 20).
+# `file:` can be a local .ttf or a Google font, e.g. file: "gfonts://Roboto".
+font:
+  - file: "gfonts://Archivo+Black@400"        # a local .ttf works too
+    id: flip_font
+    size: 100                          # <- the actual digit height in px
+    glyphs: "0123456789"               # digits only; AM/PM uses am_pm_font
+
+lvgl:
+  widgets:
+    - lvgl_clock:
+        id: dc
+        time_id: sntp_time
+        width: 480
+        height: 320
+        align: CENTER
+        style: flipclock
+        twenty_four_hour: true        # false = 1-12
+        foreground: cc_hands          # digit colour
+        background: cc_bg             # behind the cards + the seam line
+        show_seconds: false           # true = adds :SS (needs a smaller font)
+        flipclock:
+          font: flip_font             # ESPHome font: id (size 120) or a built-in like montserrat_48
+          card_color: cc_card         # card fill (defaults to a dark grey)
+          flip_duration: 450ms        # one digit flip; 0 = no animation
+          blink: false                # divider dots blink off
+          blank_leading_zero: false
+          show_dots: true

@@ -1,0 +1,18 @@
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO13
+  miso_pin: GPIO12
+  
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: "ST7796"
+    data_rate: 80MHz
+    draw_rounding: 4
+    reset_pin: GPIO04
+    cs_pin: GPIO16
+    dc_pin: GPIO17
+    dimensions:
+      width: 320
+      height: 480

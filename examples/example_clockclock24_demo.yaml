@@ -1,0 +1,36 @@
+# Dedicated test config for the clockclock24 digit-flip animation - since it
+# normally only re-animates once a minute (on a real minute change), this
+# boots straight into `mode: demo`, which advances a fake minute every
+# `demo_interval` (default 5s) so you can watch the flip repeatedly without
+# waiting on real time. Demo mode itself never reads the real clock, but
+# `time: sntp` still requires some network component to be configured.
+# Compile:  esphome compile examples/example_clockclock24_demo.yaml
+
+esphome:
+  name: lvgl-clock-demo
+
+packages:
+  base: !include common_base.yaml
+  lvgl_colors: !include common_lvgl.yaml
+  display: !include tft_big.yaml
+  
+lvgl:
+  widgets:
+    - lvgl_clock:
+        id: dc
+        time_id: sntp_time
+        width: 480
+        height: 320
+        align: CENTER
+        style: clockclock24
+        foreground: cc_hands
+        background: cc_bg
+        clockclock24:
+          mode: demo          # boots straight into the fake-minute test mode
+          demo_interval: 5s   # how often the fake minute advances
+          movement: opposite  # opposite | clockwise | counter | long - try each
+          show_face: true
+          spacing: 0.0
+          transition_length: 3s  
+          face_color: cc_faces
+          border_color: cc_faces

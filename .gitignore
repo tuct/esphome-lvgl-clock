@@ -1,0 +1,7 @@
+# ESPHome build artefacts
+.esphome/
+secrets.yaml
+
+# Python
+__pycache__/
+*.py[cod]

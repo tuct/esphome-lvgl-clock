@@ -1,0 +1,50 @@
+# lvgl_clock - style: clockclock24 (24 tiny analogue clocks), with the
+# idle-animation actions driven from a boot-phase interval.
+# Compile:  esphome compile examples/example_clockclock24.yaml
+
+esphome:
+  name: lvgl-clock-lvgl
+
+packages:
+  base: !include common_base.yaml
+  lvgl_colors: !include common_lvgl.yaml
+  display: !include tft_big.yaml
+
+lvgl:
+  widgets:
+    - lvgl_clock:
+        id: dc
+        time_id: sntp_time
+        width: 480
+        height: 320
+        align: CENTER
+        style: clockclock24
+        foreground: cc_hands
+        background: cc_bg
+        clockclock24:
+          movement: long  # opposite | clockwise | counter | long
+          mode: rotate_left  # spin until the time syncs
+          spacing: 0.0  # gap between HH and MM, in clock-widths
+          show_face: true
+          face_color: cc_faces
+          border_color: cc_faces
+          
+
+interval:
+  # boot phases: spin while connecting, birds while waiting for NTP, then the
+  # real time
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: "return id(sntp_time).now().is_valid();"
+          then:
+            - lvgl_clock.show_time: dc
+          else:
+            - if:
+                condition:
+                  wifi.connected:
+                then:
+                  - lvgl_clock.flying_birds: dc
+                else:
+                  - lvgl_clock.rotate_left: dc

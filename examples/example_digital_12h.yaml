@@ -1,0 +1,29 @@
+# lvgl_clock - style: digital in 12-hour mode, no seconds. 12h mode adds an
+# AM/PM marker column on the left (drawn as scaling vector strokes, no font).
+# Compile:  esphome compile examples/example_digital_12h.yaml
+
+esphome:
+  name: lvgl-clock-digital-12h
+
+packages:
+  base: !include common_base.yaml
+  lvgl_colors: !include common_lvgl.yaml
+  display: !include tft_big.yaml
+
+lvgl:
+  widgets:
+    - lvgl_clock:
+        id: dc
+        time_id: sntp_time
+        width: 480
+        height: 320
+        align: CENTER
+        style: digital
+        foreground: cc_hands
+        background: cc_bg
+        show_seconds: false           # HH:MM only
+        twenty_four_hour: false       # 1-12 + AM/PM column on the left
+        digital:
+          segment_style: classic      # classic (tapered LCD) | rounded (capsule ends)
+          blink: true
+          blank_leading_zero: false
