@@ -30,7 +30,7 @@ lvgl:
   widgets:
     - lvgl_clock:
         id: dc
-        time_id: sntp_time
+        time_id: clock_time
         width: ${clock_height}     # square face - both sides = the short edge
         height: ${clock_height}
         align: CENTER

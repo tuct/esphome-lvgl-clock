@@ -1,33 +1,32 @@
 # Shared hardware/network boilerplate for the lvgl_clock example_*.yaml
-# configs, on a Seeed Studio XIAO ESP32-S3 (8 MB PSRAM). Same contents as
-# common_base_esp32_s3_devkit.yaml - only the board and the pin substitutions
+# configs, on a Seeed Studio XIAO ESP32-C3. Same contents as
+# common_base_esp32_s3_xiao.yaml - only the board and the pin substitutions
 # differ - so an example swaps between them by changing the `base:` include.
 #
+# NO PSRAM. The C3 has ~400 KB of SRAM and no external RAM interface at all,
+# so the clock's canvas (width x height x 2 bytes) has to fit in internal RAM
+# alongside LVGL's own draw buffer. A 240x240 face is 115 KB, so keep
+# `lvgl: buffer_size:` small (25% or less) and don't use `transparent:`
+# (ARGB8888 doubles the canvas). See the memory debug sensors below.
+#
 # Pins are written as the XIAO's silkscreen labels (ESPHome knows them for
-# this board): D8 = GPIO7, D9 = GPIO8, D10 = GPIO9, D1 = GPIO2, D2 = GPIO3,
-# D3 = GPIO4. CS/DC match the Seeed Round Display shield's fixed wiring, so
-# that panel needs no overrides.
+# this board): D8 = GPIO8, D9 = GPIO9, D10 = GPIO10, D1 = GPIO3, D2 = GPIO4,
+# D3 = GPIO5. CS/DC match the Seeed Round Display shield's fixed wiring.
 
 substitutions:
   # Pins for the SPI bus used to drive the display
-  clk_pin: "D8"     # GPIO7,  SCK
-  mosi_pin: "D10"   # GPIO9,  MOSI
-  miso_pin: "D9"    # GPIO8,  MISO
+  clk_pin: "D8"     # GPIO8,  SCK
+  mosi_pin: "D10"   # GPIO10, MOSI
+  miso_pin: "D9"    # GPIO9,  MISO - also the C3's BOOT strapping pin
   # Pins for the display itself
-  reset_pin: "D7"   # GPIO6,  RESET
-  cs_pin: "D1"      # GPIO2
-  dc_pin: "D3"      # GPIO4
+  reset_pin: "D2"   # GPIO4 - unused by the round display (it has no reset line)
+  cs_pin: "D1"      # GPIO3
+  dc_pin: "D3"      # GPIO5
 
 esp32:
-  board: seeed_xiao_esp32s3
+  board: seeed_xiao_esp32c3
   framework:
     type: esp-idf
-
-# The XIAO ESP32-S3 carries 8 MB of octal PSRAM - required for LVGL at the
-# larger panel sizes.
-psram:
-  mode: octal
-  speed: 80MHz
 
 logger:
 wifi:
@@ -70,12 +69,10 @@ color:
     blue: 14%
 
 # --- Memory debug -----------------------------------------------------------
-# The clock's canvas is the biggest single allocation in this config (a 240x240
-# ARGB8888 face is ~230 KB, RGB565 ~115 KB) and LVGL wants its own buffers on
-# top, so it's worth watching the heap. `free` is what's left in internal RAM,
-# `block` the largest contiguous chunk - a canvas fails to allocate when
-# `block` drops below its size even if `free` looks fine. `psram` is the
-# separate 8 MB pool the big buffers come from.
+# Far more important here than on the S3: with no PSRAM the canvas competes
+# with WiFi and LVGL for the same ~400 KB. `block` (largest contiguous chunk)
+# is what a canvas allocation actually needs - it can fail while `free` still
+# looks healthy.
 debug:
   update_interval: 30s
 
@@ -89,7 +86,5 @@ sensor:
       name: "Heap Min Free"
     fragmentation:
       name: "Heap Fragmentation"
-    psram:
-      name: "PSRAM Free"
     loop_time:
       name: "Loop Time"

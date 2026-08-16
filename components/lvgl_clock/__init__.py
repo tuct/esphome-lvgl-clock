@@ -2,6 +2,7 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import automation
 from esphome.components import time
+from esphome.components.lvgl import defines as df
 from esphome.components.lvgl.defines import CONF_MAIN, literal
 from esphome.components.lvgl.lv_validation import lv_font
 from esphome.components.lvgl.lvcode import lv, lv_add, lv_expr
@@ -87,7 +88,21 @@ MODES = {
     "time": ClockMode.CC_MODE_TIME,
     "rotate_left": ClockMode.CC_MODE_ROTATE_LEFT,
     "flying_birds": ClockMode.CC_MODE_FLYING_BIRDS,
+    "birds": ClockMode.CC_MODE_FLYING_BIRDS,  # alias
     "demo": ClockMode.CC_MODE_DEMO,
+    "wave": ClockMode.CC_MODE_WAVE,
+    "spiral": ClockMode.CC_MODE_SPIRAL,
+    "wind": ClockMode.CC_MODE_WIND,
+    "love": ClockMode.CC_MODE_LOVE,
+}
+
+# The choreographies `cycle_modes:` may step through - the idle animations only.
+# `time` is what it returns to, and `demo` is a bring-up aid that would stall
+# the clock on a fake minute, so neither belongs in the rotation.
+CYCLE_MODES = {
+    k: v
+    for k, v in MODES.items()
+    if k not in ("time", "demo")
 }
 MovementMode = lvgl_clock_ns.enum("MovementMode")
 MOVEMENTS = {
@@ -96,6 +111,10 @@ MOVEMENTS = {
     "counter": MovementMode.CC_MOVE_COUNTER,
     "long": MovementMode.CC_MOVE_LONG,
 }
+
+# 4 digits x 6 little clocks - mirrors NUM_DIGITS/NUM_CLOCKS in lvgl_clock.h
+NUM_DIGITS = 4
+NUM_CLOCKS = 24
 
 # style sub-blocks
 CONF_STYLE = "style"
@@ -111,6 +130,8 @@ CONF_SHOW_FACE = "show_face"
 CONF_FOREGROUND = "foreground"  # the "ink": hands / markers / digits
 CONF_BACKGROUND = "background"  # behind everything
 CONF_TRANSPARENT = "transparent"  # clear to transparent instead of background
+CONF_DIRECT_DRAW = "direct_draw"  # no canvas: draw straight into LVGL's buffer
+CONF_GRAYSCALE = "grayscale"  # 8bpp greyscale canvas (L8) instead of RGB565
 CONF_SHOW_SECONDS = "show_seconds"
 CONF_RENDER_INTERVAL = "render_interval"
 # face colours (styles that draw a dial / clock faces)
@@ -122,7 +143,19 @@ CONF_TRANSITION_LENGTH = "transition_length"
 CONF_MOVEMENT = "movement"
 CONF_MODE_SPEED = "mode_speed"
 CONF_SPACING = "spacing"
+CONF_PADDING_INSIDE = "padding_inside"
+CONF_PADDING_OUTSIDE = "padding_outside"
 CONF_DEMO_INTERVAL = "demo_interval"
+CONF_DEMO_STEP = "demo_step"
+CONF_STARTUP_ALIGN = "startup_align"
+CONF_SYNC_DOT = "sync_dot"
+CONF_CYCLE_MODES = "cycle_modes"
+CONF_INTERVAL = "interval"
+CONF_MODES = "modes"
+CONF_PARTIAL = "partial"
+CONF_INDEX = "index"
+PARTIAL_CLOCK = "clock"
+PARTIAL_DIGIT = "digit"
 # analog (classic)
 CONF_MINUTE_TICKS = "minute_ticks"
 CONF_HOUR_TICKS = "hour_ticks"
@@ -156,6 +189,67 @@ FACE_SCHEMA = cv.Schema(
     }
 )
 
+# Step through the choreographies on a fixed cadence:
+#
+#     cycle_modes:
+#       interval: 1min      # one window per minute
+#       modes: [birds, spiral, wave]
+#
+# The list is walked IN ORDER and wraps, so repeating an entry shows it more
+# often - [wave, wind, wave, spiral] gives wave half the slots. Only the cadence
+# is configurable. The window is a fixed 35 s starting 10 s
+# past the top of the interval (CYCLE_WINDOW_S / CYCLE_OFFSET_S in the .cpp),
+# which keeps it clear of the digit flip at :00 and keeps a wall from being
+# tuned into a disco. `interval` therefore has to leave room for it.
+#
+# On a multi-display wall exactly one widget picks - the first `lvgl_clock_id`
+# of the broadcasting sync platform - and its choice reaches everything else in
+# the mode field of the sync packet. Listening nodes are marked as followers and
+# never run this, so `cycle_modes:` is safe to leave in the shared config.
+# It needs a synced clock, so nothing fires until the time is valid.
+_CYCLE_MODES_SCHEMA = cv.Schema(
+    {
+        # 1 min is the floor: the fixed window is 10 s in + 35 s long, so
+        # anything shorter would leave the clock permanently animating.
+        cv.Required(CONF_INTERVAL): cv.All(
+            cv.positive_time_period_seconds,
+            cv.Range(min=cv.TimePeriod(seconds=60)),
+        ),
+        cv.Required(CONF_MODES): cv.All(
+            cv.ensure_list(cv.enum(CYCLE_MODES, lower=True)),
+            cv.Length(min=1),
+        ),
+    }
+)
+
+
+def _partial_schema(value):
+    """`partial:` selects which slice of the 24-clock grid this widget draws.
+
+        partial: 7                      # shorthand: one mini-clock
+        partial: {mode: clock, index: 7}
+        partial: {mode: digit, index: 1}   # a whole digit, 6 clocks as 2x3
+
+    Clock indices are 0-23 (`digit * 6 + cell`, `cell = row * 2 + col`); digit
+    indices are 0-3, left to right.
+    """
+    if not isinstance(value, dict):
+        return {
+            CONF_MODE: PARTIAL_CLOCK,
+            CONF_INDEX: cv.int_range(min=0, max=NUM_CLOCKS - 1)(value),
+        }
+    value = cv.Schema(
+        {
+            cv.Required(CONF_MODE): cv.one_of(PARTIAL_CLOCK, PARTIAL_DIGIT, lower=True),
+            cv.Required(CONF_INDEX): cv.int_,
+        }
+    )(value)
+    # The valid range depends on the mode, so it cannot live in the schema.
+    limit = NUM_DIGITS if value[CONF_MODE] == PARTIAL_DIGIT else NUM_CLOCKS
+    value[CONF_INDEX] = cv.int_range(min=0, max=limit - 1)(value[CONF_INDEX])
+    return value
+
+
 CLOCKCLOCK24_SCHEMA = cv.Schema(
     {
         cv.Optional(CONF_HAND_WIDTH, default=1): cv.int_range(min=1, max=12),
@@ -166,10 +260,34 @@ CLOCKCLOCK24_SCHEMA = cv.Schema(
         cv.Optional(CONF_MODE, default="time"): cv.enum(MODES, lower=True),
         cv.Optional(CONF_MODE_SPEED, default=1.0): cv.positive_float,
         cv.Optional(CONF_SPACING, default=0.0): cv.float_range(min=0.0, max=4.0),
+        # Plain pixel gutters: between neighbouring clocks, and around the
+        # whole block. Both default to 0 (the clocks touch, and the block fills
+        # the widget).
+        cv.Optional(CONF_PADDING_INSIDE, default=0): cv.int_range(min=0),
+        cv.Optional(CONF_PADDING_OUTSIDE, default=0): cv.int_range(min=0),
         # testing aid for `mode: demo` - how often the fake minute advances
         cv.Optional(
             CONF_DEMO_INTERVAL, default="5s"
         ): cv.positive_time_period_milliseconds,
+        # Fake minutes per demo tick. 1 only ever moves the minutes digits;
+        # a stride like 137 exercises all four.
+        cv.Optional(CONF_DEMO_STEP, default=1): cv.int_range(min=1, max=1439),
+        # Hold every hand at 12 o'clock for this long after boot (0s = off) -
+        # a build/orientation check for a wall of separate displays.
+        cv.Optional(
+            CONF_STARTUP_ALIGN, default="0s"
+        ): cv.positive_time_period_milliseconds,
+        # A dot at 1:30 that flashes for 120 ms every wall-clock second, shown
+        # only while the node is out of sync - a fault light for a multi-display
+        # build, not a heartbeat. Nodes that are not fed by the UART time
+        # platform (a master, or any standalone clock) count as synced and never
+        # show it.
+        cv.Optional(CONF_SYNC_DOT, default=False): cv.boolean,
+        # Periodic break-out into a random choreography - see above.
+        cv.Optional(CONF_CYCLE_MODES): _CYCLE_MODES_SCHEMA,
+        # Render only part of the grid, filling the widget - for building a
+        # physical ClockClock 24 from separate displays.
+        cv.Optional(CONF_PARTIAL): _partial_schema,
     }
 ).extend(FACE_SCHEMA)
 
@@ -290,6 +408,17 @@ def _resolve_style(config):
     elif sub_blocks and sub_blocks[0] != style:
         raise cv.Invalid(f"'{sub_blocks[0]}:' does not match style: {style}")
 
+    if config.get(CONF_DIRECT_DRAW) and config[CONF_STYLE] != CONF_CLOCKCLOCK24:
+        raise cv.Invalid(
+            f"direct_draw is only implemented for style: clockclock24, not {config[CONF_STYLE]}"
+        )
+
+    if config.get(CONF_GRAYSCALE) and config.get(CONF_TRANSPARENT):
+        raise cv.Invalid(
+            "grayscale and transparent are mutually exclusive: an L8 canvas has "
+            "no alpha channel"
+        )
+
     if style == CONF_FLIPCLOCK and CONF_FLIPCLOCK not in config:
         raise cv.Invalid(
             "style: flipclock needs a `flipclock:` block (its `font:` is required)"
@@ -318,6 +447,13 @@ WIDGET_SCHEMA = (
             # vs 2) so widgets behind the clock show through; `background` is
             # then unused.
             cv.Optional(CONF_TRANSPARENT, default=False): cv.boolean,
+            # 8bpp greyscale: half the canvas RAM, colours reduced to
+            # luminance. For a PSRAM-less chip running a large face.
+            cv.Optional(CONF_GRAYSCALE, default=False): cv.boolean,
+            # EXPERIMENTAL: skip the canvas entirely and draw from an LVGL
+            # DRAW_MAIN event. No canvas RAM and no canvas->buffer copy per
+            # frame. clockclock24 only so far.
+            cv.Optional(CONF_DIRECT_DRAW, default=False): cv.boolean,
             cv.Optional(CONF_CLOCKCLOCK24): CLOCKCLOCK24_SCHEMA,
             cv.Optional(CONF_ANALOG): ANALOG_SCHEMA,
             cv.Optional(CONF_DIGITAL): DIGITAL_SCHEMA,
@@ -350,6 +486,12 @@ class LvglClockWidgetType(WidgetType):
             lv_name="canvas",
         )
 
+    async def obj_creator(self, parent, config: dict):
+        # Direct draw needs a plain object to hang a DRAW_MAIN event on; the
+        # canvas path needs a canvas. Chosen per widget instance.
+        lv_name = "obj" if config.get(CONF_DIRECT_DRAW) else "canvas"
+        return lv_expr.call(f"{lv_name}_create", parent)
+
     def get_uses(self):
         # lv_canvas_t structurally embeds an lv_image_dsc_t, and LVGL's image
         # widget in turn hard-requires the label widget to be compiled in -
@@ -369,22 +511,44 @@ class LvglClockWidgetType(WidgetType):
         # px) instead of the native RGB565 (2 bytes/px) - the C++ side then
         # clears each frame to transparent instead of the background colour.
         transparent = config[CONF_TRANSPARENT]
-        cf = "LV_COLOR_FORMAT_ARGB8888" if transparent else "LV_COLOR_FORMAT_NATIVE"
-        draw_buf = cg.new_Pvariable(config[CONF_DRAW_BUF_ID])
-        buf_size = literal(f"LV_DRAW_BUF_SIZE({width}, {height}, {cf})")
-        lv.draw_buf_init(
-            draw_buf,
-            width,
-            height,
-            literal(cf),
-            0,
-            lv_expr.malloc_core(buf_size),
-            literal(buf_size),
-        )
-        lv.draw_buf_set_flag(draw_buf, literal("LV_IMAGE_FLAGS_MODIFIABLE"))
-        lv.canvas_set_draw_buf(w.obj, draw_buf)
+        grayscale = config[CONF_GRAYSCALE]
+        if transparent:
+            cf = "LV_COLOR_FORMAT_ARGB8888"
+        elif grayscale:
+            # 1 byte per pixel. ESPHome only turns the L8 render path on when a
+            # greyscale `image:` is in the config, so ask for it ourselves.
+            cf = "LV_COLOR_FORMAT_L8"
+            df.add_define("LV_DRAW_SW_SUPPORT_L8", "1")
+        else:
+            cf = "LV_COLOR_FORMAT_NATIVE"
+        direct = config[CONF_DIRECT_DRAW]
+        lv_add(w.var.set_direct_draw(direct))
+        if not direct:
+            # Only the canvas path needs a draw buffer; direct draw renders
+            # into the one LVGL already has.
+            draw_buf = cg.new_Pvariable(config[CONF_DRAW_BUF_ID])
+            buf_size = literal(f"LV_DRAW_BUF_SIZE({width}, {height}, {cf})")
+            # Not lv_malloc_core(): that is PSRAM-first, and this canvas is
+            # drawn into every frame. alloc_canvas_buf() prefers internal SRAM.
+            canvas_buf = literal(
+                f"esphome::lvgl_clock::alloc_canvas_buf("
+                f"LV_DRAW_BUF_SIZE({width}, {height}, {cf}))"
+            )
+            lv.draw_buf_init(
+                draw_buf,
+                width,
+                height,
+                literal(cf),
+                0,
+                canvas_buf,
+                literal(buf_size),
+            )
+            lv.draw_buf_set_flag(draw_buf, literal("LV_IMAGE_FLAGS_MODIFIABLE"))
+            lv.canvas_set_draw_buf(w.obj, draw_buf)
+
         lv_add(w.var.set_canvas_size(width, height))
         lv_add(w.var.set_transparent(transparent))
+        lv_add(w.var.set_grayscale(grayscale))
 
         lv_add(w.var.set_time(await cg.get_variable(config[CONF_TIME_ID])))
         style = config[CONF_STYLE]
@@ -402,8 +566,24 @@ class LvglClockWidgetType(WidgetType):
             lv_add(w.var.set_movement(c[CONF_MOVEMENT]))
             lv_add(w.var.set_mode_speed(c[CONF_MODE_SPEED]))
             lv_add(w.var.set_spacing(c[CONF_SPACING]))
+            lv_add(w.var.set_padding_inside(c[CONF_PADDING_INSIDE]))
+            lv_add(w.var.set_padding_outside(c[CONF_PADDING_OUTSIDE]))
             lv_add(w.var.set_mode(c[CONF_MODE]))
             lv_add(w.var.set_demo_interval(c[CONF_DEMO_INTERVAL].total_milliseconds))
+            lv_add(w.var.set_demo_step(c[CONF_DEMO_STEP]))
+            lv_add(w.var.set_startup_align(c[CONF_STARTUP_ALIGN].total_milliseconds))
+            lv_add(w.var.set_sync_dot(c[CONF_SYNC_DOT]))
+            if CONF_CYCLE_MODES in c:
+                rnd = c[CONF_CYCLE_MODES]
+                lv_add(w.var.set_cycle_interval(rnd[CONF_INTERVAL].total_seconds))
+                for m in rnd[CONF_MODES]:
+                    lv_add(w.var.add_cycle_mode(m))
+            if CONF_PARTIAL in c:
+                partial = c[CONF_PARTIAL]
+                if partial[CONF_MODE] == PARTIAL_DIGIT:
+                    lv_add(w.var.set_partial_digit(partial[CONF_INDEX]))
+                else:
+                    lv_add(w.var.set_partial(partial[CONF_INDEX]))
             await _apply_face(w.var, c)
         elif CONF_ANALOG in config:
             c = config[CONF_ANALOG]
@@ -476,3 +656,7 @@ _show_time = _register_mode_action("lvgl_clock.show_time", MODES["time"])
 _rotate_left = _register_mode_action("lvgl_clock.rotate_left", MODES["rotate_left"])
 _flying_birds = _register_mode_action("lvgl_clock.flying_birds", MODES["flying_birds"])
 _demo = _register_mode_action("lvgl_clock.demo", MODES["demo"])
+_wave = _register_mode_action("lvgl_clock.wave", MODES["wave"])
+_spiral = _register_mode_action("lvgl_clock.spiral", MODES["spiral"])
+_wind = _register_mode_action("lvgl_clock.wind", MODES["wind"])
+_love = _register_mode_action("lvgl_clock.love", MODES["love"])

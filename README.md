@@ -6,7 +6,7 @@ and redraws itself — no `interval:` + lambda glue needed. Pick a **style**:
 
 | `style` | preview | what it looks like |
 | --- | --- | --- |
-| [**clockclock24**](#style-clockclock24) *(default)* | <img src="./docs/clockclock24.gif" width="200"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` idle animations. |
+| [**clockclock24**](#style-clockclock24) *(default)* | <img src="./docs/clockclock24.gif" width="200"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` / `wave` / `spiral` / `wind` / `love` idle animations. |
 | [**analog**](#style-analog) | <img src="./docs/analog.gif" width="160"> | A classic analogue clock face — independently configurable ticks and per-hand style/colour. |
 | [**digital**](#style-digital) | <img src="./docs/digital.gif" width="200"> | `HH:MM(:SS)` as a **7-segment** display with a "ghost 8", optional blinking colon, and an AM/PM column in 12h mode. |
 | [**flipclock**](#style-flipclock) | <img src="./docs/flipclock.gif" width="200"> | `HH:MM(:SS)` as **split-flap cards** with real font-rendered digits and an animated flip on every change ([flipclock.js](https://flipclockjs.com/) look). |
@@ -28,6 +28,10 @@ device.*
   the [boards](#boards) and [panels](#display-panels) they run on, and the
   shared packages that wire them up
 - [Resolution](#resolution) and [PSRAM](#psram-large-displays) — sizing the canvas
+- Building a **physical** ClockClock 24 from 24 displays:
+  [`partial`](#partial-one-mini-clock-per-display),
+  [UART time sync](#distributing-the-time-over-uart), and the whole build in
+  [`examples/digital_clock_clock_24_24_round_screens/`](./examples/digital_clock_clock_24_24_round_screens)
 
 ## Usage
 
@@ -38,7 +42,7 @@ external_components:
 
 time:
   - platform: sntp
-    id: sntp_time
+    id: clock_time
     timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
 
 # Marker only - enables the widget below, takes no options itself. Required
@@ -51,7 +55,7 @@ lvgl:
   widgets:
     - lvgl_clock:
         id: dc
-        time_id: sntp_time
+        time_id: clock_time
         width: 150
         height: 128
         style: analog
@@ -80,6 +84,7 @@ defaulting to `clockclock24` if none are given.
 | `foreground` | white | The "ink": hands / markers / digits. |
 | `background` | black | Behind everything. Ignored when `transparent`. |
 | `transparent` | `false` | Clear the canvas to fully transparent each frame instead of filling `background`, so other LVGL widgets placed **behind** the clock (listed earlier in `widgets:`) show through the gaps between hands/ticks/digits. Allocates an **ARGB8888** canvas — **4 bytes/px instead of 2**, so it needs roughly double the RAM (likely PSRAM at larger sizes). |
+| `grayscale` | `false` | Allocate the canvas as **8-bit greyscale** (`LV_COLOR_FORMAT_L8`) instead of RGB565 — **half the RAM**, colours reduced to luminance. See [below](#grayscale-half-size-canvas). Mutually exclusive with `transparent`. |
 
 Before the time source first syncs, `analog` / `digital` / `flipclock` show a
 fake **00:15** with the seconds running off uptime, so the clock looks alive
@@ -91,6 +96,34 @@ wifi/NTP boot phase (see its mode actions below).
 same thing in every style). Face-specific colours live inside the style
 block that uses them — see below. All colours take the **id of a `color:`
 component** and are optional; omit for white-on-black.
+
+### `grayscale`: half-size canvas
+
+The canvas is normally RGB565, 2 bytes per pixel — a 240×240 face is 115 KB,
+which is most of the internal RAM on a chip without PSRAM. `grayscale: true`
+allocates it as **L8 (1 byte per pixel)**: the same face becomes **57.6 KB**.
+
+```yaml
+- lvgl_clock:
+    id: dc
+    time_id: clock_time
+    width: 240
+    height: 240
+    grayscale: true      # 57.6 KB instead of 115 KB
+```
+
+Every colour is reduced to its **luminance**, so the face renders in shades of
+grey. For the usual white-on-black clock that costs nothing; for the SBB face
+or a coloured second hand it obviously does.
+
+**Why not 1-bit?** A 240×240 I1 canvas would be 7.2 KB, but LVGL's I1 blend
+resolves an anti-aliased pixel as `mask / 255` in integer arithmetic, so every
+partially covered pixel is discarded — thin lines vanish and hands render as a
+few stray dots. L8 mixes with `lv_color_8_8_mix()` and anti-aliases correctly.
+
+Reach for this only when RAM is the binding constraint. With PSRAM, or one
+display per MCU, plain RGB565 fits and is the faster path — L8 still has to be
+expanded to RGB565 on every flush to the panel.
 
 ### Transparent background / layering other widgets
 
@@ -113,7 +146,7 @@ lvgl:
         text: ""
     - lvgl_clock:
         id: dc
-        time_id: sntp_time
+        time_id: clock_time
         width: 320
         height: 320
         style: analog
@@ -125,7 +158,7 @@ interval:
     then:
       - lvgl.label.update:
           id: date_label
-          text: !lambda 'return id(sntp_time).now().strftime("%a %d.%m");'
+          text: !lambda 'return id(clock_time).now().strftime("%a %d.%m");'
 ```
 
 A full version is in [`example_analog.yaml`](./examples/example_analog.yaml).
@@ -145,14 +178,35 @@ clockclock24:
   hand_width: 1             # base hand thickness (px)
   movement: opposite        # opposite | clockwise | counter | long
   transition_length: 2s      # sweep duration on a time change
-  mode: time                 # time | rotate_left | flying_birds | demo
-  mode_speed: 1.0             # idle-animation speed multiplier (rotate_left/flying_birds only)
+  mode: time                 # time | rotate_left | flying_birds | wave | spiral | wind | love | demo
+  mode_speed: 1.0             # idle-animation speed multiplier (idle animations only)
+  cycle_modes: ...           # break out into a random choreography - see below
   spacing: 0.0                # gap between HH and MM, in clock-widths
   demo_interval: 5s           # `mode: demo` only - see below
+  demo_step: 1                 # `mode: demo` only - fake minutes per tick
+  partial: 7                    # draw ONLY this one of the 24 - see below
+  startup_align: 0s           # hold every hand at 12 for this long after boot
+  sync_dot: false             # blink a dot while OUT OF SYNC - see below
+  padding_inside: 0           # px gutter between neighbouring mini-clocks
+  padding_outside: 0          # px margin around the whole block
   show_face: false            # draw a filled disc behind each mini-clock's hands
   face_color: ...             # little-clock fill (needs show_face)
   border_color: ...           # little-clock rim (needs show_face)
 ```
+
+`startup_align` and `sync_dot` exist for multi-display builds and are worth
+knowing before you wire 24 panels:
+
+- **`startup_align`** holds every hand at 12 o'clock for the first N seconds
+  after boot. On a wall it is the quickest check that each panel is alive and
+  mounted the right way up — any module whose "up" isn't up is obvious at a
+  glance — and the first real sweep then starts from the same place on every
+  node. The hands *sweep* to 12 rather than snapping there.
+- **`sync_dot`** blinks a dot at 1:30 for 120 ms every second, **only while the
+  node is out of sync**. It is a fault light, not a heartbeat: a healthy wall
+  shows nothing, and any panel still blinking has not heard a usable time from
+  the master. Anything not fed by the UART time platform — a master, or any
+  standalone clock — counts as synced and never shows it.
 
 Examples: [`example_clockclock24.yaml`](./examples/example_clockclock24.yaml),
 [`example_clockclock24_demo.yaml`](./examples/example_clockclock24_demo.yaml).
@@ -168,10 +222,83 @@ takes to reach its new target angle:
 - `long` — each hand independently takes whichever direction is the *longer*
   way around, for a more dramatic full sweep.
 
-**Idle-animation actions** (drive from automations): `lvgl_clock.show_time`,
-`lvgl_clock.rotate_left`, `lvgl_clock.flying_birds` — e.g. spin while
-Wi-Fi connects, birds while waiting for NTP, then the time. See
+### Idle animations (choreographies)
+
+Six of them, each a pure function of the shared wall clock and the mini-clock's
+position in the 8×3 grid — so on a multi-display build every node draws its own
+slice of one figure, with no coordination beyond the synced time.
+
+| Mode | Action | What it looks like |
+| --- | --- | --- |
+| `rotate_left` | `lvgl_clock.rotate_left` | Every hand sweeping counter-clockwise in unison |
+| `flying_birds` | `lvgl_clock.flying_birds` | Hands opening and closing like wings, all together |
+| `wave` | `lvgl_clock.wave` | Every clock is one stroke. All start together on the **10:30–4:30 diagonal**, the left column sets off first and the start ripples right, then all turn **clockwise at the same constant rate** — each column held a fixed **15°** behind its left neighbour, so the wall fans from near-vertical to past-horizontal and nothing overtakes |
+| `spiral` | `lvgl_clock.spiral` | Both hands together on **7:30**. All start from that pose, the start rolls out **diagonally from bottom-left to top-right**, then every clock turns **counter-clockwise at a constant rate** with the offsets it picked up |
+| `wind` | `lvgl_clock.wind` | Each wall **column** is one continuous stalk — leaning in top-left, vertical through the middle, out bottom-right. A gust from the left shears the two free ends past each other (top `10:30→1:30`, bottom `4:30→7:30`) while the middle row stays put, and rolls across the wall |
+| `love` | `lvgl_clock.love` | Spells **LOVE** across the four digit positions and holds it — a pose rather than an animation, swept in and out like any other mode change |
+| `time` | `lvgl_clock.show_time` | Not an animation — back to the clock |
+
+`mode_speed` scales all of them. Drive them from automations — e.g. spin while
+Wi-Fi connects, birds while waiting for NTP, then the time, as in
 [`example_clockclock24.yaml`](./examples/example_clockclock24.yaml).
+
+The animations run off the **synced wall clock**, not `millis()`. That matters
+on a wall: every board powers up at a different instant, so a `millis()`-driven
+figure would be a different figure on every board.
+
+### `cycle_modes`: step through the choreographies
+
+Rather than driving the animations by hand, let the clock interrupt itself:
+
+```yaml
+clockclock24:
+  cycle_modes:
+    interval: 1min      # one window per minute
+    modes: [birds, wave, spiral, wind]
+```
+
+Every `interval`, the **next** mode in `modes` plays for **35 s starting 10 s
+past the top of the interval** — so with `1min` it runs from **:10 to :45** of every
+minute — then the clock returns to whatever it was showing. The `:10` start
+keeps the animation clear of the digit flip at `:00`.
+
+**The window is deliberately not configurable**; only the cadence is. 35 s is
+long enough for any of the choreographies to read as a whole gesture, and the
+other two knobs offer nothing except ways to leave a wall permanently
+animating. The window includes the fades in and out, so what you see is a
+staggered left-to-right sweep into the choreography, the choreography itself,
+and a staggered sweep back — all inside the window, with the clock showing the
+time again by the end of it. `interval` therefore has a **1 min floor**, since anything shorter
+could not contain the window.
+
+The list is walked **in order** and wraps, so a repeated entry simply comes
+round more often — `[wave, wind, wave, spiral]` gives `wave` half the slots.
+`modes` accepts any idle animation (`birds` is an alias for `flying_birds`) but
+not `time` or `demo`.
+
+The mode is picked by hashing the interval number rather than by a random draw,
+so it is stable and repeatable — a board that reboots mid-window rejoins the
+choreography already playing rather than restarting it. It needs a synced
+clock, so nothing fires until the time is valid.
+
+**On a multi-display wall, exactly one widget picks.** The first `lvgl_clock_id`
+listed on the *broadcasting* sync platform is the picker; every other widget —
+the other panels on that board, and every listening node — is marked a follower,
+never runs `cycle_modes:`, and is handed the mode over the bus. Relying on all
+of them computing the same answer independently would work only for as long as
+their clocks and their config agreed to the second, so the choice is made once
+and sent. `cycle_modes:` can therefore live in the shared config; only the
+master acts on it. See
+[Distributing the time over UART](#distributing-the-time-over-uart).
+
+One consequence worth knowing: **drive mode actions at the picker, not at the
+followers.** An automation setting `lvgl_clock.show_time` on a follower once a
+second will fight the mode arriving over the bus, and that board's panels will
+visibly disagree mid-choreography.
+
+While a window is open, mode-setting actions are recorded rather than obeyed,
+and applied when it closes. Without that, an automation re-asserting
+`lvgl_clock.show_time` once a second would chop the animation into pieces.
 
 **Testing the digit-flip animation** — clockclock24 only re-animates on an
 actual minute change, so watching it live can mean waiting up to 60 real
@@ -180,6 +307,116 @@ fake internal minute every `demo_interval` (default `5s`) instead of reading
 the real clock, so you can watch the animation repeatedly on demand. See
 [`example_clockclock24_demo.yaml`](./examples/example_clockclock24_demo.yaml) for a
 config that boots straight into it.
+
+`demo_step` (default `1`) is how many fake minutes each tick jumps. At `1` only
+the minutes digits ever change — the hours digits sit still for 5 to 50 minutes
+of real time, which looks like a dead display. A stride like `137` (2 h 17 m)
+changes all four digits on every tick.
+
+### `partial`: one mini-clock per display
+
+`partial: 0…23` draws **only that one mini-clock**, scaled to fill the widget,
+instead of the whole 8×3 grid. It exists to build a *physical* ClockClock 24
+out of 24 separate round displays, one MCU each.
+
+Every node still runs the identical animation engine over all 24 clocks and
+simply renders its own, so the digit sweeps, `movement:` directions and idle
+animations stay in step across the wall by construction — the only thing the
+nodes have to agree on is the time.
+
+```yaml
+clockclock24:
+  partial: 18       # digit 3, row 0, col 0
+```
+
+Clocks are numbered `index = digit * 6 + cell`, `cell = row * 2 + col`, so each
+digit is a 2-wide × 3-tall block:
+
+```
+          digit 0      digit 1      digit 2      digit 3
+        ┌──────────┬────────────┬────────────┬────────────┐
+ row 0  │  0    1  │   6    7   │  12   13   │  18   19   │
+ row 1  │  2    3  │   8    9   │  14   15   │  20   21   │
+ row 2  │  4    5  │  10   11   │  16   17   │  22   23   │
+        └──────────┴────────────┴────────────┴────────────┘
+```
+
+Each node logs its own position at boot:
+`Partial: clock 18 of 24 (digit 3, row 0, col 0)`.
+
+The full build — wiring, memory budget, node configs — is in
+[`examples/digital_clock_clock_24_24_round_screens/`](./examples/digital_clock_clock_24_24_round_screens).
+
+### Distributing the time over UART
+
+For a multi-node build, `time: - platform: lvgl_clock` shares one clock across
+all the nodes on a single wire: one node has Wi-Fi and SNTP and broadcasts,
+the rest listen and set their clocks from it.
+
+```yaml
+# master - the only node with a network
+time:
+  - platform: sntp
+    id: clock_time
+  - platform: lvgl_clock
+    uart_id: sync_bus
+    lvgl_clock_id: dc
+    broadcast_interval: 1s     # presence of this key = master role
+
+# every other node
+time:
+  - platform: lvgl_clock
+    id: clock_time             # this is the widget's time_id
+    uart_id: sync_bus
+    lvgl_clock_id: [dc_a, dc_b, dc_c]   # every widget on this node
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `uart_id` | *(required)* | The `uart:` bus. The master needs `tx_pin`, slaves only `rx_pin`. |
+| `broadcast_interval` | *(unset)* | Set = master, sending this often. Unset = slave. |
+| `lvgl_clock_id` | *(unset)* | One widget id or a list. The master sends its animation mode and slaves adopt it, so the whole wall spins/flies/shows time together. |
+
+**A node driving several panels must list all of them.** On a slave the bus is
+the only thing that sets the mode, so a widget left out sits on its boot default
+forever. The **first** id is special: it is the node's picker for
+[`cycle_modes`](#cycle_modes-step-through-the-choreographies), and on the master it is
+the widget whose mode goes on the wire — the rest are marked followers and are
+handed it.
+
+The wire format is one plain line, so a serial monitor is enough to debug it:
+
+```
+CC24 <epoch> <ms> <mode> <demo_min>
+```
+
+Both ends log mode changes by name (`TX mode -> spiral`, `RX mode -> spiral`) at
+`INFO`, so two consoles side by side show the propagation directly.
+
+The millisecond field matters more than it looks: nodes only need to agree on
+which *minute* it is, but a node whose clock sits a second off flips its digit
+a second late, and across a wall that reads as a fault rather than as drift.
+ESPHome's own `synchronize_epoch_()` ignores corrections under ±1 s and sets
+whole seconds only, so this platform sets the clock itself with microsecond
+precision. `<demo_min>` carries the master's fake-minute counter in `mode:
+demo` (`-1` otherwise) — without it each node would count its own and every
+display would show a different time.
+
+Three details that only matter once there is more than one node, but matter a
+lot then:
+
+- **`<epoch> 0` means "mode only, keep your clock".** The master broadcasts
+  from boot, before SNTP has given it a time, so the whole wall shares its
+  boot animation instead of one node spinning while the rest sit on their
+  defaults. It is also what lets `mode: demo` drive a wall with no network at
+  all.
+- **A mode change is sent immediately**, not at the next `broadcast_interval`.
+  Waiting would leave listeners up to a full interval behind — 1000 ms against
+  the ~2 ms the packet takes to send, which is what an idle animation starting
+  late actually looks like.
+- **The timestamp is the time the packet will *land*,** not when it was
+  sampled: the master adds the line's wire time (`bytes × 10 / baud`) before
+  sending. Small, but it is a fixed one-way bias, and those do not average out.
 
 ## `style: analog`
 
@@ -415,6 +652,14 @@ own [size substitutions](#substitutions):
 | <img src="./docs/hw/tft_4_0_st7796.png" width="150"> | **4.0" ST7796**, 320×480 — [buy](https://amzn.to/4fQuHnl) | [`common_tft_4_0_spi_st7796_320_480.yaml`](./examples/common_tft_4_0_spi_st7796_320_480.yaml) | **480×320** | The big one — the only panel with room for `seg_matrix` and for `flipclock` at a 100 px font. 80 MHz `data_rate`, `draw_rounding: 4`. What every example ships with. |
 | <img src="./docs/hw/tft_1_69_st7789v2.png" width="150"> | **1.69" ST7789V2**, 240×280 — [buy](https://amzn.to/4fzuExq) | [`common_tft_1_69_spi_st7789v2_240_280.yaml`](./examples/common_tft_1_69_spi_st7789v2_240_280.yaml) | **280×240** | Rounded-corner IPS module, 48×30 mm — a nice desk clock. No MISO; needs `invert_colors: true` and `offset_height: 20` (the glass sits 20 px down in the controller's 240×320 frame buffer), both already in the package. |
 | <img src="./docs/hw/tft_1_8_st7735.png" width="150"> | **1.8" ST7735**, 128×160 — [buy](https://amzn.to/4pReNh6) | [`common_tft_1_8_spi_st7735_128_160.yaml`](./examples/common_tft_1_8_spi_st7735_128_160.yaml) | **160×128** | The cheap classic. No MISO line. Fine for `analog`, `digital` and `clockclock24`; too small for `seg_matrix`. |
+| | **1.28" round GC9A01A**, 240×240 — [Seeed Round Display for XIAO](https://wiki.seeedstudio.com/get_start_round_display/) | [`common_tft_1_28_round_xiao_seeed_GC9A01A_240_240.yaml`](./examples/common_tft_1_28_round_xiao_seeed_GC9A01A_240_240.yaml) | **240×240** | A 39 mm disc that plugs onto a XIAO — round glass, so `analog` and `clockclock24` suit it and `seg_matrix` does not. The package also wires the shield's CHSC6X touch, its backlight as a dimmable `light:`, and its PCF8563 RTC (see below). XIAO-only: pins are fixed by the shield. **The switch on the shield has to be on** — it gates the backlight *and* the I²C bus, so with it off you get a black panel plus an 11 s `Setup i2c` stall and a failed RTC, none of which YAML can fix. |
+
+**Keeping time without a network:** the round display carries a PCF8563 RTC on
+the same I²C bus as its touch panel, and its package sets it up — the RTC reads
+into the system clock every hour and gets a fresh SNTP time written back once a
+day, so the clock is right immediately after a reboot with no Wi-Fi. Any
+[`time:` platform](https://esphome.io/components/time/) works the same way; the
+widget just reads the system clock through its `time_id`.
 
 Each file is a plain ESPHome
 [`display:`](https://esphome.io/components/display/) config, so adding your own
@@ -431,7 +676,7 @@ panel wants a much slower `render_interval:` than the 16 ms default either way.
 
 | File | What it provides |
 | --- | --- |
-| a **base** (`common_base_*.yaml`) | Everything that isn't the panel: the board and framework, `psram:`, `wifi:` / `api:` / `ota:` / `logger:`, the `external_components:` pointer at `../components`, the `time: sntp` source (`id: sntp_time`), the bare `lvgl_clock:` marker key, the shared `color:` palette — `cc_hands` (white ink), `cc_bg` (black), `cc_faces` (the dark "ghost"/face grey) — and the **pin** substitutions. |
+| a **base** (`common_base_*.yaml`) | Everything that isn't the panel: the board and framework, `psram:`, `wifi:` / `api:` / `ota:` / `logger:`, the `external_components:` pointer at `../components`, the `time: sntp` source (`id: clock_time`), the bare `lvgl_clock:` marker key, the shared `color:` palette — `cc_hands` (white ink), `cc_bg` (black), `cc_faces` (the dark "ghost"/face grey) — and the **pin** substitutions. |
 | a **display** (`common_tft_*.yaml`) | The `spi:` bus, the `display:` component (always `id: my_display`), the `lvgl:` binding for it (`displays:`, `rotation: 90`, black `bg_color`) and the **size** substitutions. Pins come from the base, so a panel file has no hard-coded GPIOs. |
 
 `packages:` merges dicts key-by-key, so the display file's `lvgl:` keys and the
@@ -448,6 +693,7 @@ so nothing is duplicated between the panel and the widget:
 | `clk_pin` / `mosi_pin` / `miso_pin` | the base | `GPIO18` / `GPIO13` / `GPIO12` | the display file's `spi:` bus |
 | `reset_pin` / `cs_pin` / `dc_pin` | the base | `GPIO04` / `GPIO16` / `GPIO17` | the display file's `display:` |
 | `clock_width` / `clock_height` | **the display file** | that panel's landscape size | the `lvgl_clock` widget's `width:` / `height:` |
+| `touch_sda_pin` / `touch_scl_pin` / `touch_irq_pin` / `backlight_pin` | the round display file | `D4` / `D5` / `D7` / `D6` | that panel's extras — the pins the base doesn't know about |
 
 `clock_width`/`clock_height` live in the display file, so they always describe
 the panel you actually included — swapping the `display:` line resizes the
@@ -480,6 +726,18 @@ the `width`/`height` on the `lvgl_clock` widget itself:
 | [`example_flipclock.yaml`](./examples/example_flipclock.yaml) | flipclock | full screen | Split-flap cards with a Google-font TTF (`font:` at `size: 100`) — the recommended way to get large crisp digits. |
 | [`example_flipclock_12h.yaml`](./examples/example_flipclock_12h.yaml) | flipclock | full screen | Same in 12 h mode — adds the dedicated AM/PM flap card. |
 | [`example_seg_matrix.yaml`](./examples/example_seg_matrix.yaml) | seg_matrix | full screen | The 6×24 grid of small 7-segment displays with a dark red ghost grid. |
+
+### Multi-board builds
+
+Two folders build a ClockClock 24 out of several boards rather than one screen.
+Both drive several panels from a single MCU and share one clock over the UART
+time platform, so they are also the worked examples of `partial:`,
+`lvgl_clock_id:` as a list, `cycle_modes:` and `sync_dot:`.
+
+| Build | Boards | What it is |
+| --- | --- | --- |
+| [`digital_clock_clock_24_24_round_screens/`](./examples/digital_clock_clock_24_24_round_screens) | 8 × XIAO ESP32-S3, 3 round panels each | The full 24-clock wall — one board per physical column. Master/slave roles, per-board configs `board_a.yaml`…`board_h.yaml`, wiring, pin budget, power and bring-up order in its own [README](./examples/digital_clock_clock_24_24_round_screens/README.md). |
+| [`digital_clock_clock_24_4_screens/`](./examples/digital_clock_clock_24_4_screens) | 2 × XIAO ESP32-S3, 2 panels each | **The cheap way in** — a sixth of the displays. Each panel renders a whole **digit** (`partial: {mode: digit}`) rather than one mini-clock, so four screens make `HH:MM`. The trade is a visible gap at every digit boundary, where the original is one continuous 8×3 grid. |
 
 The examples read Wi-Fi/API/OTA credentials from `secrets.yaml` — copy
 [`secrets.yaml.example`](./examples/secrets.yaml.example) to

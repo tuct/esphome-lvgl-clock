@@ -1,26 +1,23 @@
-# Shared hardware/network boilerplate for the lvgl_clock example_*.yaml
-# configs. Included via `packages:` - each example adds its own `esphome:`
-# name and `lvgl: widgets: - lvgl_clock: ...` on top.
 
+
+# Classic ESP32 (WROOM-32). Its pin numbering has nothing in common with the
+# C3/S3 boards, so a XIAO pin map cannot be copied across: GPIO6-11 are the
+# SPI flash, GPIO34-39 are input-only, GPIO0/2/12/15 are strapping pins and
+# GPIO1/3 are the UART0 console. These are the standard VSPI assignments.
 substitutions:
   # Pins for the SPI bus used to drive the display
-  clk_pin: "GPIO18"
-  mosi_pin: "GPIO13"
-  miso_pin: "GPIO12"
+  clk_pin: "GPIO18"    # VSPI SCK
+  mosi_pin: "GPIO23"   # VSPI MOSI
+  miso_pin: "GPIO19"   # VSPI MISO - only a microSD would need it
   # Pins for the display itself
-  reset_pin: "GPIO04"
-  cs_pin: "GPIO16"
-  dc_pin: "GPIO17"
+  reset_pin: "GPIO22"
+  cs_pin: "GPIO4"      # VSPI CS - a strapping pin, but CS idles high anyway
+  dc_pin: "GPIO21"
 
 esp32:
-  board: esp32-s3-devkitc1-n16r8
+  board: esp32dev
   framework:
     type: esp-idf
-
-#enable psram for the ESP32-S3 - required for LVGL to work with a 480x320 display    
-psram:
-  mode: octal # check your board's PSRAM mode, octal is the default for ESP32-S3
-  speed: 80MHz
 
 logger:
 wifi:
@@ -46,8 +43,7 @@ time:
 # marker only - enables the lvgl_clock widget, takes no options itself.
 lvgl_clock:
 
-# Shared colour palette for the lvgl_clock example_*.yaml
-# configs. 
+# Shared colour palette for the lvgl_clock example_*.yaml configs.
 
 color:
   - id: cc_hands

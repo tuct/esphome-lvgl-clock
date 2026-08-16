@@ -1,0 +1,14 @@
+# Board A (master) on the older HAND-WIRED prototype instead of the carrier PCB.
+#
+# Identical to board_a.yaml in every way except the four pins that moved - see
+# pinout_hand.yaml. Its own `name:` so it gets its own build directory rather
+# than fighting board_a.yaml's.
+#
+#   esphome run board_a_hand.yaml
+
+esphome:
+  name: cc24-4s-board-a-hand
+
+packages:
+  board: !include board_a.yaml
+  pinout: !include pinout_hand.yaml

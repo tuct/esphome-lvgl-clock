@@ -1,0 +1,9 @@
+# ClockClock 24, 4-screen build - board B: the MINUTES, digits 2 and 3.
+# A listener. Everything else lives in common_slave.yaml.
+
+packages:
+  slave: !include common_slave.yaml
+
+substitutions:
+  clock_digit_a: "2"    # minutes, tens
+  clock_digit_b: "3"    # minutes, units

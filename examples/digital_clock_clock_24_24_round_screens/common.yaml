@@ -1,0 +1,118 @@
+# Everything a digital_clock_clock_24 node has in common: three 1.28" round
+# GC9A01A panels on one XIAO ESP32-S3, each rendering ONE of the wall's 24
+# mini-clocks. Eight of these boards make the full ClockClock 24.
+#
+# board_a.yaml (the master) and common_slave.yaml add the `uart:` and the
+# `time:` source, since those are what differ between the roles. The eight
+# board_*.yaml files override the three clock indices.
+
+packages:
+  base: !include common_base_esp32_s3_xiao.yaml
+  # One include per panel. Everything about a panel lives in panel.yaml; these
+  # four vars are the only things that differ between them, so there is exactly
+  # one copy of the widget config on the board no matter how many panels it
+  # drives. Order matters: panel A's widget is the wall's mode picker.
+  panel_a: !include
+    file: panel.yaml
+    vars:
+      lvgl_id: lvgl_a
+      display_id: my_display_a
+      widget_id: dc_a
+      clock_index: ${clock_index_a}
+  panel_b: !include
+    file: panel.yaml
+    vars:
+      lvgl_id: lvgl_b
+      display_id: my_display_b
+      widget_id: dc_b
+      clock_index: ${clock_index_b}
+  panel_c: !include
+    file: panel.yaml
+    vars:
+      lvgl_id: lvgl_c
+      display_id: my_display_c
+      widget_id: dc_c
+      clock_index: ${clock_index_c}
+
+substitutions:
+  # Only what a board file or the command line actually overrides lives here.
+  # Anything constant across the build - the widget's size, its render rate,
+  # the choreography settings - is written once, plainly, in panel.yaml.
+  #
+  # Which of the 24 mini-clocks each panel draws. One board = one physical
+  # column of the wall, top to bottom - so the three indices step by 2, not by
+  # 1. See the README for the numbering; the role files override these.
+  clock_index_a: "0"    # row 0
+  clock_index_b: "2"    # row 1
+  clock_index_c: "4"    # row 2
+
+# One bus, three panels. Only the chip selects differ - DC and reset are single
+# wires fanned out to all three, which is what keeps this inside the XIAO's pin
+# budget.
+spi:
+  clk_pin: ${clk_pin}
+  mosi_pin: ${mosi_pin}
+  miso_pin: ${miso_pin}
+
+display:
+  - platform: mipi_spi
+    id: my_display_a
+    model: "GC9A01A"
+    setup_priority: 810
+    data_rate: 80MHz
+    cs_pin: ${cs_pin_a}
+    dc_pin:
+      number: ${dc_pin}
+      allow_other_uses: true
+    # The only panel that declares the shared reset line - wire panels B and C
+    # to the same pin.
+    reset_pin:
+      number: ${reset_pin}
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+  - platform: mipi_spi
+    id: my_display_b
+    model: "GC9A01A"
+    data_rate: 80MHz
+    cs_pin: ${cs_pin_b}
+    dc_pin:
+      number: ${dc_pin}
+      allow_other_uses: true
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+  - platform: mipi_spi
+    id: my_display_c
+    model: "GC9A01A"
+    data_rate: 80MHz
+    cs_pin: ${cs_pin_c}
+    dc_pin:
+      number: ${dc_pin}
+      allow_other_uses: true
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+
+# All three backlights on one LEDC channel, so the board dims as a unit.
+output:
+  - platform: ledc
+    pin: ${backlight_pin}
+    id: backlight_output
+
+light:
+  - platform: monochromatic
+    output: backlight_output
+    id: backlight
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+
+# One LVGL instance per display, each with one mini-clock. `direct_draw` skips
+# the widget's own canvas and renders straight into LVGL's buffer, which is
+# what makes three panels affordable: a 240x240 RGB565 canvas is 115 KB each.
+#
+# The panels are defined once, in panel.yaml, and included per display at the
+# top of this file - see `packages:`. Only the four vars there differ.

@@ -1,0 +1,73 @@
+# Everything a 4-screen ClockClock 24 node has in common: two 320x240 ILI9342
+# panels on one XIAO ESP32-S3, each rendering ONE DIGIT of HH:MM. Two of these
+# boards make the whole clock.
+#
+# board_a.yaml (the master) and common_slave.yaml add the `uart:` and the
+# `time:` source, since those are what differ between the roles. The two
+# board_*.yaml files override the digit indices.
+
+packages:
+  base: !include common_base_esp32_s3_xiao.yaml
+  # One include per panel. Everything about a panel lives in panel.yaml; these
+  # four vars are the only things that differ between them, so there is exactly
+  # one copy of the widget config on the board. Order matters: panel A's widget
+  # is the board's mode picker.
+  panel_a: !include
+    file: panel.yaml
+    vars:
+      lvgl_id: lvgl_a
+      display_id: my_display_a
+      widget_id: dc_a
+      clock_digit: ${clock_digit_a}
+  panel_b: !include
+    file: panel.yaml
+    vars:
+      lvgl_id: lvgl_b
+      display_id: my_display_b
+      widget_id: dc_b
+      clock_digit: ${clock_digit_b}
+
+substitutions:
+  # Only what a board file or the command line actually overrides lives here.
+  # Anything constant across the build is written once, plainly, in panel.yaml.
+  #
+  # Which digit of HH:MM each panel draws. 0 = hours tens, 3 = minutes units.
+  clock_digit_a: "0"
+  clock_digit_b: "1"
+
+# One bus, two panels. Only the chip selects differ - DC and reset are single
+# wires fanned out to both.
+spi:
+  clk_pin: ${clk_pin}
+  mosi_pin: ${mosi_pin}
+  miso_pin: ${miso_pin}
+
+display:
+  - platform: mipi_spi
+    id: my_display_a
+    model: "ILI9342"
+    setup_priority: 810
+    data_rate: 80MHz
+    cs_pin: ${cs_pin_a}
+    dc_pin:
+      number: ${dc_pin}
+      allow_other_uses: true
+    # The only panel that declares the shared reset line - wire panel B to the
+    # same pin. If both declared it, B's init would reset A after A had already
+    # been configured, and A would come up blank.
+    reset_pin:
+      number: ${reset_pin}
+    dimensions:
+      width: 320
+      height: 240
+  - platform: mipi_spi
+    id: my_display_b
+    model: "ILI9342"
+    data_rate: 80MHz
+    cs_pin: ${cs_pin_b}
+    dc_pin:
+      number: ${dc_pin}
+      allow_other_uses: true
+    dimensions:
+      width: 320
+      height: 240

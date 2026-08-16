@@ -1,0 +1,32 @@
+# Everything a listener board shares. A board file sets its two digits and
+# nothing else - including the hostname, which is derived from the first digit
+# below so that a board file really is just its half of the clock.
+#
+# No `wifi:` / `ota:` anywhere in this path: a slave takes the time off the
+# UART and needs no network at all. The cost is USB flashing.
+
+esphome:
+  name: cc24-4s-digit-${clock_digit_a}
+
+packages:
+  node: !include common.yaml
+
+# RX only - a slave never transmits, so any number of them share one master TX.
+uart:
+  id: sync_bus
+  rx_pin: ${sync_pin}
+  baud_rate: 115200
+
+time:
+  # Sets the system clock from the master's broadcast, to the millisecond, and
+  # mirrors the animation mode onto the widgets. This is their `time_id`.
+  #
+  # Deliberately no boot-phase `interval:` on a slave: the mode arrives over the
+  # bus, so a board that also decided for itself would fight the master once a
+  # second. BOTH widgets have to be listed - the bus is the only thing that
+  # moves them, so one left out would sit on the boot default forever.
+  - platform: lvgl_clock
+    id: clock_time
+    uart_id: sync_bus
+    lvgl_clock_id: [dc_a, dc_b]
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"

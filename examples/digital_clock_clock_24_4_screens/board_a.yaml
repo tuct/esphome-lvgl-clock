@@ -1,0 +1,96 @@
+# ClockClock 24, 4-screen build - board A: the HOURS, digits 0 and 1.
+#
+# THE MASTER. The only board with a network: it gets the time from SNTP and
+# broadcasts it down the one-wire bus once a second, so board B stays in step.
+# It drives two panels like board B - it is not a third box.
+#
+#   esphome run board_a.yaml
+#
+# Wiring: D5 is TX here, and goes to D5 (RX) on board B. Common ground.
+
+esphome:
+  name: cc24-4s-board-a
+
+packages:
+  node: !include common.yaml
+
+substitutions:
+  clock_digit_a: "0"    # hours, tens
+  clock_digit_b: "1"    # hours, units
+  # `time` = the real clock, `demo` = a fake minute every 5 s for bring-up.
+  # Master-only, because the master owns the wall's mode: it broadcasts what it
+  # is doing and board B follows, demo minute counter included. Pass it rather
+  # than editing this:
+  #   esphome -s clock_mode demo run board_a.yaml
+  clock_mode: "time"
+
+# The only networked board. Board B carries none of this.
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# TX only - nothing on the bus talks back.
+uart:
+  id: sync_bus
+  tx_pin: ${sync_pin}
+  baud_rate: 115200
+
+time:
+  # The master's own clock, and the widgets' `time_id`.
+  - platform: sntp
+    id: clock_time
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+  # The broadcaster. `broadcast_interval` is what puts it in master role;
+  # `lvgl_clock_id` makes the idle animation mode travel with the time, so all
+  # four screens spin/fly/show time together.
+  #
+  # Both widgets are listed, and the order matters: the FIRST is the clock's
+  # only picker - it runs `random_modes:` and its choice is what goes on the
+  # wire. The second is marked a follower and is handed the same mode, exactly
+  # as board B is.
+  - platform: lvgl_clock
+    id: sync_out
+    uart_id: sync_bus
+    lvgl_clock_id: [dc_a, dc_b]
+    broadcast_interval: 1s
+
+interval:
+  # Boot phases: spin while connecting, birds while waiting for NTP, then the
+  # real time. Only the master runs this - the mode it lands on rides the sync
+  # packet, so board B follows rather than deciding for itself.
+  #
+  # Addressed to dc_a ONLY, on purpose. dc_a is the picker; dc_b is a follower
+  # and is handed its mode by the broadcaster once a second. Driving dc_b here
+  # too would fight that: mid-choreography it would snap back to the time every
+  # second while dc_a kept animating, and the two panels would disagree.
+  - interval: 1s
+    then:
+      # The substitution is baked into the lambda at codegen - it comes out as
+      # strcmp("time", "demo") - so the test is a constant the compiler folds
+      # away, and the branch is decided by the value you build with.
+      - if:
+          condition:
+            lambda: 'return strcmp("${clock_mode}", "demo") == 0;'
+          then:
+            # Bring-up: hold the fake-minute counter instead of the real clock.
+            # Re-asserted every second rather than set once at boot, so it also
+            # reclaims the clock after each random_modes window.
+            - lvgl_clock.demo: dc_a
+          else:
+            - if:
+                condition:
+                  lambda: "return id(clock_time).now().is_valid();"
+                then:
+                  - lvgl_clock.show_time: dc_a
+                else:
+                  - if:
+                      condition:
+                        wifi.connected:
+                      then:
+                        - lvgl_clock.flying_birds: dc_a
+                      else:
+                        - lvgl_clock.rotate_left: dc_a

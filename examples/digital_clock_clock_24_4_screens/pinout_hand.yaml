@@ -1,0 +1,12 @@
+# The older hand-wired prototype's pin map, for board_a_hand.yaml /
+# board_b_hand.yaml. Everything else about those boards is identical to the PCB
+# ones - only these four pins moved.
+#
+# DC, SCK, MOSI and MISO are the same in both wirings, so they stay in
+# common_base_esp32_s3_xiao.yaml and are not repeated here.
+
+substitutions:
+  reset_pin: "D7"   # GPIO44 (PCB: D2)
+  cs_pin_a: "D1"    # GPIO2  (PCB: D4)
+  cs_pin_b: "D4"    # GPIO5  (PCB: D5)
+  sync_pin: "D5"    # GPIO6  (PCB: D1)

@@ -1,5 +1,9 @@
 #include "lvgl_clock.h"
 #include "esphome/core/log.h"
+#include <sys/time.h>
+#ifdef USE_ESP32
+#include <esp_heap_caps.h>
+#endif
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -13,6 +17,15 @@ static const char *const TAG = "lvgl_clock";
 
 static const float PI_F = 3.14159265358979323846f;
 static const float PARK = 225.0f;  // clockclock idle: both hands to bottom-left
+// Added to `hand_width` for clockclock24 only. Its hands are drawn with square
+// ends, so they need more body than a rounded one to read as the flat bars the
+// real thing uses.
+static const int CC_HAND_EXTRA_PX = 4;
+// Hand width as a fraction of a mini-clock's radius, used when one clock is
+// blown up to fill a whole panel (`partial:`). At that size a fixed pixel
+// width is a thread, so the width has to scale - and this divisor, not
+// CC_HAND_EXTRA_PX, is what actually sets it there.
+static const int CC_HAND_RADIUS_DIV = 8;
 
 // clockclock24 font: target angle (deg, 0 = 12 o'clock, clockwise) of the two
 // hands of each of a digit's 6 clocks (order TL, TR, ML, MR, BL, BR).
@@ -20,7 +33,7 @@ static const float FONT[10][CLOCKS_PER_DIGIT][2] = {
     {{90, 180}, {180, 270}, {0, 180}, {0, 180}, {0, 90}, {0, 270}},           // 0
     {{PARK, PARK}, {180, 180}, {PARK, PARK}, {0, 180}, {PARK, PARK}, {0, 0}},  // 1
     {{90, 90}, {180, 270}, {90, 180}, {0, 270}, {0, 90}, {270, 270}},         // 2
-    {{90, 90}, {180, 270}, {90, 90}, {0, 180}, {90, 90}, {0, 270}},           // 3
+    {{90, 90}, {180, 270}, {90, 90}, {0, 270}, {90, 90}, {0, 270}},           // 3
     {{180, 180}, {180, 180}, {0, 90}, {0, 180}, {PARK, PARK}, {0, 0}},        // 4
     {{90, 180}, {270, 270}, {0, 90}, {180, 270}, {90, 90}, {0, 270}},         // 5
     {{90, 180}, {270, 270}, {0, 180}, {180, 270}, {0, 90}, {0, 270}},         // 6
@@ -29,7 +42,87 @@ static const float FONT[10][CLOCKS_PER_DIGIT][2] = {
     {{90, 180}, {180, 270}, {0, 90}, {0, 180}, {90, 90}, {0, 270}},           // 9
 };
 
+// Wraps into [0,360).
+// LOVE, one letter per digit position, same 2-wide x 3-tall block and the same
+// {hand0, hand1} angles as FONT above (0 = 12 o'clock, clockwise; PARK on both
+// hands = an unlit cell). Strokes meet at the cell edges, so a hand pointing at
+// 180 in one row joins the 0 of the row below.
+//
+// O is exactly the digit 0. V is two vertical strokes that turn inward on the
+// bottom row and meet at the block's bottom centre. Those arms are 105/255:
+// a flat-bottomed U would be 90/270, so this is 15 deg BELOW horizontal - just
+// enough dip to read as a V rather than a U, without the point dropping far
+// below the other letters' baseline the way a 45 deg diagonal does - a 45 deg diagonal in every
+// cell instead reads as three stacked chevrons, not a letter.
+//
+// E's middle row is {0,180} - a pure spine - so the spine runs unbroken from
+// top to bottom. A mini-clock has two hands, and the middle-left cell of an E
+// wants three directions (up, down and right); something has to give. Giving up
+// the right hand costs the left half of the middle bar, which just makes the
+// middle arm shorter than the other two - normal for the letter. Giving up the
+// down hand instead leaves a visible gap in the spine, which is not.
+//
+// The top row of every letter points DOWN only ({180,180} where the stroke is
+// just a stem). An upward hand there would push L and V a half-cell taller than
+// O and E, whose top rows start at the row-0 pivot - so the four letters would
+// not share a cap height.
+static const float LOVE[NUM_DIGITS][CLOCKS_PER_DIGIT][2] = {
+    {{180, 180}, {PARK, PARK}, {0, 180}, {PARK, PARK}, {0, 90}, {270, 270}}, // L
+    {{90, 180}, {180, 270}, {0, 180}, {0, 180}, {0, 90}, {0, 270}},          // O
+    {{180, 180}, {180, 180}, {0, 180}, {0, 180}, {0, 105}, {0, 255}},        // V
+    {{90, 180}, {270, 270}, {0, 180}, {270, 270}, {0, 90}, {270, 270}},      // E
+};
+
+static inline float wrap360(float a) { return fmodf(fmodf(a, 360.0f) + 360.0f, 360.0f); }
+
+// Signed shortest way round from `a` to `b`, in (-180, 180].
+static inline float shortest_delta(float a, float b) {
+  float d = fmodf(b - a, 360.0f);
+  if (d < 0)
+    d += 360.0f;
+  if (d > 180.0f)
+    d -= 360.0f;
+  return d;
+}
+
 static inline float ease(float t) { return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f); }
+
+// Decelerate-only: full speed at t=0, stopped at t=1.
+//
+// For LEAVING a choreography. The choreographies are constant-rate rotations,
+// so the hands are already moving when the settle begins; smootherstep starts
+// at zero velocity, which makes them stop dead and then creep off - it reads as
+// a pause before the clock comes back. This picks up where the animation left
+// off and brakes into position instead.
+static inline float ease_out(float t) {
+  float u = 1.0f - t;
+  return 1.0f - u * u * u;
+}
+
+static void draw_event_cb(lv_event_t *e) {
+  static_cast<LvglClock *>(lv_event_get_user_data(e))->draw_direct_(e);
+}
+
+void *alloc_canvas_buf(size_t size) {
+#ifdef USE_ESP32
+  size = LV_ROUND_UP(size, LV_DRAW_BUF_ALIGN);
+  void *buf = heap_caps_aligned_alloc(LV_DRAW_BUF_ALIGN, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  if (buf != nullptr) {
+    ESP_LOGD(TAG, "Canvas: %u bytes in internal RAM", (unsigned) size);
+    return buf;
+  }
+  buf = heap_caps_aligned_alloc(LV_DRAW_BUF_ALIGN, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (buf != nullptr) {
+    ESP_LOGW(TAG,
+             "Canvas: %u bytes in PSRAM - it did not fit in internal RAM, so drawing and "
+             "flushing will be markedly slower. Shrink the widget or set grayscale.",
+             (unsigned) size);
+  }
+  return buf;
+#else
+  return lv_malloc_core(size);
+#endif
+}
 
 void LvglClock::setup() {
   for (int i = 0; i < NUM_HANDS; i++) {
@@ -126,6 +219,103 @@ void LvglClock::retarget_() {
   }
   this->anim_start_ = millis();
   this->animating_ = true;
+  // Leaving a choreography: seed the live settle from what we just worked out.
+  // start_ is where the hands are now, target_ where they have to end up.
+  if (this->settle_from_ != CC_MODE_TIME) {
+    for (int i = 0; i < NUM_HANDS; i++) {
+      this->settle_prev_[i] = this->start_[i];
+      this->settle_delta_[i] = this->target_[i] - this->start_[i];
+    }
+  }
+  this->render_us_total_ = 0;
+  this->render_us_max_ = 0;
+  this->render_frames_ = 0;
+
+  // Logged with the node's own wall clock to the millisecond, not the host's
+  // receive time: on a multi-node build (see `partial:`) the whole point is to
+  // compare this line across nodes and see how far apart they start the same
+  // sweep. Under ~50 ms of skew is invisible on the wall.
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  ESPTime t = ESPTime::from_epoch_local((time_t) tv.tv_sec);
+  char digits[8];
+  for (int d = 0; d < NUM_DIGITS; d++)
+    digits[d] = (this->digits_[d] >= 0 && this->digits_[d] <= 9)
+                    ? (char) ('0' + this->digits_[d])
+                    : '-';
+  digits[NUM_DIGITS] = '\0';
+  ESP_LOGI(TAG, "Animation start -> %c%c:%c%c at %02d:%02d:%02d.%03u (uptime %u ms)", digits[0],
+           digits[1], digits[2], digits[3], t.hour, t.minute, t.second,
+           (unsigned) (tv.tv_usec / 1000), (unsigned) this->anim_start_);
+}
+
+void LvglClock::tick_choreography_(ClockMode m, double t) {
+  switch (m) {
+    case CC_MODE_ROTATE_LEFT:
+      this->tick_rotate_(t);
+      break;
+    case CC_MODE_FLYING_BIRDS:
+      this->tick_birds_(t);
+      break;
+    case CC_MODE_WAVE:
+      this->tick_wave_(t);
+      break;
+    case CC_MODE_SPIRAL:
+      this->tick_spiral_(t);
+      break;
+    case CC_MODE_WIND:
+      this->tick_wind_(t);
+      break;
+    case CC_MODE_LOVE:
+      this->tick_love_(t);
+      break;
+    default:
+      break;
+  }
+}
+
+// One frame of the settle, with cur_[] already holding the live choreography.
+//
+// Each hand is drawn at `animation + delta`, where delta is whatever still
+// separates it from its target and is faded out to zero. delta is not
+// recomputed from scratch each frame - it is carried forward and reduced by
+// exactly the animation's own movement, so `animation + delta` stays pinned on
+// the target throughout and the direction can never flip mid-fade.
+bool LvglClock::settle_blend_() {
+  uint32_t elapsed = millis() - this->anim_start_;
+  bool all_done = true;
+
+  for (int i = 0; i < NUM_HANDS; i++) {
+    float anim = this->cur_[i];
+    // Follow the animation. Its per-frame step is small, so the shortest way
+    // round is never ambiguous.
+    this->settle_delta_[i] -= shortest_delta(this->settle_prev_[i], anim);
+    this->settle_prev_[i] = anim;
+
+    int col, row;
+    wall_pos_(i / 2, col, row);
+    uint32_t delay = (uint32_t) col * this->anim_stagger_ms_;
+
+    float w;  // 0 = still purely the animation, 1 = arrived on the time
+    if (this->transition_ms_ == 0) {
+      w = 1.0f;
+    } else if (elapsed <= delay) {
+      w = 0.0f;
+      all_done = false;
+    } else {
+      float t = (elapsed - delay) / (float) this->transition_ms_;
+      if (t >= 1.0f) {
+        w = 1.0f;
+      } else {
+        w = ease_out(t);
+        all_done = false;
+      }
+    }
+    this->cur_[i] = wrap360(anim + this->settle_delta_[i] * w);
+  }
+
+  this->cc_dirty_ = true;
+  return all_done;
 }
 
 void LvglClock::advance_animation_() {
@@ -136,19 +326,56 @@ void LvglClock::advance_animation_() {
   // earlier/stale now_ms here would underflow (anim_start_ > now_ms) and snap
   // the transition to "complete" on the very frame it started.
   uint32_t now_ms = millis();
-  float t = (this->transition_ms_ == 0) ? 1.0f
-                                        : (now_ms - this->anim_start_) / (float) this->transition_ms_;
-  if (t >= 1.0f) {
+  uint32_t elapsed = now_ms - this->anim_start_;
+  // anim_stagger_ms_ is 0 for an ordinary digit change, so every hand shares
+  // one `t` and this is the plain simultaneous sweep. It is non-zero only when
+  // settling back out of a choreography, where each wall column starts that
+  // much later than the one to its left - so the wall returns to the time in
+  // the same left-to-right order the choreographies cross it in.
+  bool all_done = true;
+  for (int i = 0; i < NUM_HANDS; i++) {
+    uint32_t delay = 0;
+    if (this->anim_stagger_ms_ != 0) {
+      int col, row;
+      wall_pos_(i / 2, col, row);
+      delay = (uint32_t) col * this->anim_stagger_ms_;
+    }
+    float t;
+    if (this->transition_ms_ == 0) {
+      t = 1.0f;
+    } else if (elapsed <= delay) {
+      t = 0.0f;  // this column has not started moving yet
+    } else {
+      t = (elapsed - delay) / (float) this->transition_ms_;
+    }
+    if (t >= 1.0f) {
+      t = 1.0f;
+    } else {
+      all_done = false;
+    }
+    // Braking out of a choreography (staggered) vs an ordinary digit change
+    // (simultaneous, and starting from rest) need different curves - see
+    // ease_out().
+    float e = (this->anim_stagger_ms_ != 0) ? ease_out(t) : ease(t);
+    this->cur_[i] = this->start_[i] + (this->target_[i] - this->start_[i]) * e;
+  }
+
+  if (all_done) {
     for (int i = 0; i < NUM_HANDS; i++) {
       float f = fmodf(this->target_[i], 360.0f);
       this->cur_[i] = (f < 0) ? f + 360.0f : f;
     }
     this->animating_ = false;
-  } else {
-    float e = ease(t);
-    for (int i = 0; i < NUM_HANDS; i++)
-      this->cur_[i] = this->start_[i] + (this->target_[i] - this->start_[i]) * e;
+    this->anim_stagger_ms_ = 0;  // one-shot: the next digit change is uniform
+    if (this->render_frames_ > 0) {
+      ESP_LOGI(TAG, "Animation done in %u ms: %u frames, draw avg %.1f ms, max %.1f ms",
+               (unsigned) (millis() - this->anim_start_), (unsigned) this->render_frames_,
+               this->render_us_total_ / 1000.0f / this->render_frames_,
+               this->render_us_max_ / 1000.0f);
+    }
   }
+  // The hands moved, so the canvas is worth redrawing - see cc_dirty_.
+  this->cc_dirty_ = true;
 }
 
 void LvglClock::tick_time_(uint32_t now_ms) {
@@ -164,29 +391,395 @@ void LvglClock::tick_time_(uint32_t now_ms) {
   this->advance_animation_();
 }
 
-void LvglClock::tick_rotate_(uint32_t now_ms) {
-  float ang = fmodf(now_ms / 1000.0f * 45.0f * this->mode_speed_, 360.0f);
+// Fastest the animation clock may run away from real time while correcting,
+// as a fraction. 2% is about a fifth of a degree per second on the fastest
+// animation here - nothing an eye can pick up, and it still closes a 30 ms
+// error in under two seconds.
+static const double ANIM_SLEW_MAX = 0.02;
+// Above this the phase is not worth preserving - first sync, or a clock that
+// was wrong by minutes - so take it as a jump and be done.
+static const double ANIM_STEP_THRESHOLD = 2.0;
+
+double LvglClock::anim_clock_() {
+  uint32_t now = millis();
+  // Unsigned arithmetic, so this stays correct across the millis() wrap.
+  uint32_t dt_ms = now - this->anim_last_ms_;
+  this->anim_last_ms_ = now;
+  if (dt_ms > 1000)
+    dt_ms = 0;  // first call, or a long stall - don't lurch forward
+  double dt = dt_ms / 1000.0;
+  this->anim_t_ += dt;
+
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  if ((uint32_t) tv.tv_sec < 1546300800u)
+    return this->anim_t_;  // no synced clock yet: free-run, nothing to align to
+
+  // Where the shared clock says we should be. Full epoch seconds, not seconds
+  // since midnight: a double carries 1.8e9 s at sub-microsecond resolution, so
+  // there is no wrap anywhere in the chain and therefore no daily seam in any
+  // animation whose period happens not to divide a day.
+  double wall = (double) tv.tv_sec + tv.tv_usec * 1e-6;
+  double err = wall - this->anim_t_;
+
+  if (!this->anim_started_ || fabs(err) > ANIM_STEP_THRESHOLD) {
+    this->anim_started_ = true;
+    this->anim_t_ += err;  // jump: there is no phase worth keeping
+  } else {
+    // Slew: chase the error, but never at more than ANIM_SLEW_MAX of real time.
+    double corr = err * 0.5;
+    double cap = dt * ANIM_SLEW_MAX;
+    if (corr > cap)
+      corr = cap;
+    else if (corr < -cap)
+      corr = -cap;
+    this->anim_t_ += corr;
+  }
+  return this->anim_t_;
+}
+
+void LvglClock::wall_pos_(int c, int &col, int &row) {
+  int digit = c / CLOCKS_PER_DIGIT;
+  int cell = c % CLOCKS_PER_DIGIT;
+  row = cell / 2;
+  col = digit * 2 + (cell % 2);
+}
+
+
+
+// How much later each wall column starts when the clock moves between the time
+// and a choreography - so column 7 begins 7x this after column 0. Used in both
+// directions: fading INTO a choreography and settling back out of one.
+//
+// Big enough to actually read as a left-to-right sweep: at 250 ms the spread is
+// 1.75 s against a 4 s transition, so you clearly see the left go first and the
+// right finish last. Much smaller and the columns overlap so heavily that the
+// wall just looks like it moves at once.
+//
+// The sweep itself still takes transition_length; this only offsets its start,
+// so the whole move takes transition_length + 7x this.
+static const uint32_t COLUMN_STAGGER_MS = 250;
+
+// `cycle_modes:` window, fixed rather than configurable. 30 s is long enough
+// for any of the choreographies to read as a whole gesture; 10 s past the top
+// of the interval keeps it clear of the digit flip at :00. Only the cadence
+// (`interval:`) is exposed - the rest is the difference between a clock that
+// occasionally does something and a disco.
+static const uint32_t CYCLE_WINDOW_S = 35;
+static const uint32_t CYCLE_OFFSET_S = 10;
+
+// `wave` timing, in seconds at mode_speed 1.0 - see tick_wave_().
+//
+// The turn is deliberately unhurried: a real ClockClock moves its hands
+// slowly, and the eased profile peaks at 1.875x the average, so a short turn
+// looks much faster than its average rate suggests. The pause is only long
+// enough to read as a held position before the next sweep starts.
+// `flying_birds` timing, at mode_speed 1.0 - see tick_birds_().
+//
+// The flap rate was 2.0 rad/s, which drove the wing tips at 90 deg/s - fast
+// enough to look frantic on a wall. Halved.
+static const double BIRDS_RATE_RAD_S = 2.0 * 0.5;
+static const double BIRDS_COL_LAG_S = 0.15;  // take-off lag, column to column
+static const double BIRDS_RAMP_S = 2.5;      // beating up to full speed
+
+// `wave` timing. A CONSTANT-RATE, never-ending rotation: no rest pose, no
+// easing, and neighbouring columns held a fixed number of degrees apart.
+//
+// Constant rate is the requirement, not a simplification. Ease a bounded turn
+// and the gap between two staggered columns breathes - the leader accelerates
+// away, then stops dead while the follower closes on it. Only a uniform rate
+// keeps the spacing and the speed identical for every column, so nothing ever
+// overtakes.
+static const double WAVE_TURN_S = 15.3;       // one revolution (was 10.7, i.e. 30% slower again)
+// Steady-state angle between a column and its left neighbour. Expressed in
+// DEGREES, not as a delay, because the angle is the thing you actually look
+// at; the start delay is derived from it below.
+//
+// 15 deg spreads 105 deg across the eight columns, which is what the real
+// ClockClock does: the left edge stands near vertical while the right has gone
+// past horizontal. Measured off a photo of one, the per-column step is ~13-15
+// deg and every row in a column sits at the SAME angle - the gradient runs
+// across the wall, not down it, which is why the lag is per column only.
+static const float WAVE_COL_LAG_DEG = 15.0f;
+static const float WAVE_REST_DEG = 315.0f;  // 10:30, i.e. the 10:30-4:30 line
+static const double WAVE_RAMP_S = 1.0;      // spin-up, per clock
+
+// `spiral` timing. Every clock STARTS from the same pose, and the start rolls
+// out along the bottom-left to top-right diagonal; after that each one turns
+// forever at the same constant rate, so the offsets they end up with are fixed
+// and nothing overtakes. SPIRAL_RAMP_S eases each clock up to speed rather
+// than snapping it into motion.
+static const double SPIRAL_TURN_S = 7.5;      // one revolution
+// Same convention as WAVE_COL_LAG_DEG: the steady-state angle between the two
+// far corners of the diagonal, with the start delay derived from it.
+static const float SPIRAL_DIAG_LAG_DEG = 40.0f;  // corner to opposite corner
+static const double SPIRAL_RAMP_S = 1.0;      // spin-up, per clock
+
+// `wind` timing, in seconds at mode_speed 1.0 - see tick_wind_().
+//
+// Deliberately asymmetric: a stalk is pushed over in RISE, stays pressed flat
+// for HOLD, and only then eases back over a much longer FALL. HOLD is what
+// makes the gust read as a gust - the left of the wall is still bent over
+// while the right is only just starting, instead of the left having already
+// sprung back by then. SPREAD < RISE + HOLD is the condition for that.
+//
+// Sums to 15 s, so a whole number of gusts fills the window at both
+// mode_speed 1.0 and 0.5.
+// How far the two free ends SWING: 10:30 -> 1:30 at the top and 4:30 -> 7:30
+// at the bottom, i.e. 45 deg either side of the 12:00-6:00 trunk axis. The
+// MIDDLE row never moves.
+static const float WIND_BEND_DEG = 90.0f;
+// RISE and FALL are floored by a hard constraint: NEIGHBOURING COLUMNS MUST
+// NEVER DIFFER BY MORE THAN 15 DEG. A column lags its left neighbour by
+// SPREAD/(WALL_COLS-1), and an eased ramp peaks at 1.875x its average rate, so
+//     max gap = 1.875 * BEND / RAMP * SPREAD / (WALL_COLS - 1)
+// which needs RAMP >= 1.607 * SPREAD to stay under 15 deg. Both ramps satisfy
+// it with margin - see the numbers in the README. Shorten either and the front
+// turns into a visible step down the wall instead of a bend passing through.
+// The push runs left to right and the release runs RIGHT TO LEFT, so the
+// cycle has to contain both sweeps: RISE + 2x SPREAD + FALL. Each column's
+// hold is what falls out of that - the left edge, pushed first and released
+// last, holds for 2x SPREAD; the right edge, pushed last and released first,
+// holds for nothing. That difference IS the gust running across and back.
+static const double WIND_RISE_S = 3.75;    // out to the far end
+static const double WIND_FALL_S = 3.75;    // and back again
+static const double WIND_SPREAD_S = 1.5;   // one sweep across the wall
+static const double WIND_CYCLE_S =
+    WIND_RISE_S + 2.0 * WIND_SPREAD_S + WIND_FALL_S;
+
+void LvglClock::tick_rotate_(double t) {
+  float ang = (float) fmod(t * 45.0 * this->mode_speed_, 360.0);
   float a = 360.0f - ang;
   for (int c = 0; c < NUM_CLOCKS; c++) {
     this->cur_[c * 2 + 0] = a;
-    this->cur_[c * 2 + 1] = fmodf(a + 180.0f, 360.0f);
+    this->cur_[c * 2 + 1] = wrap360(a + 180.0f);
   }
+  this->cc_dirty_ = true;
 }
 
-void LvglClock::tick_birds_(uint32_t now_ms) {
-  float ph = now_ms / 1000.0f * 2.0f * this->mode_speed_;
-  float wing = 85.0f + 45.0f * sinf(ph);  // sweeps ~40..130 deg
-  float left = 360.0f - wing;
+// Wings, taking off left to right.
+//
+// Each column starts its beat BIRDS_COL_LAG_S after the one to its left, so the
+// flock lifts off across the wall instead of all at once, and every bird beats
+// up to speed over BIRDS_RAMP_S rather than snapping straight into a full flap.
+// The ramp is applied to the PHASE (the integral of the rate), which is what
+// keeps the wing position continuous while the speed is still changing.
+void LvglClock::tick_birds_(double t) {
+  const double rate = BIRDS_RATE_RAD_S * this->mode_speed_;  // rad/s, once up to speed
+  double ts = t * this->mode_speed_;
+
   for (int c = 0; c < NUM_CLOCKS; c++) {
+    int col, row;
+    wall_pos_(c, col, row);
+    double x = ts - (double) col * BIRDS_COL_LAG_S;
+
+    double ph;
+    if (x <= 0.0) {
+      ph = 0.0;  // this column has not lifted off yet
+    } else if (x < BIRDS_RAMP_S) {
+      ph = rate * x * x / (2.0 * BIRDS_RAMP_S);  // beating up to speed
+    } else {
+      ph = rate * (x - BIRDS_RAMP_S / 2.0);
+    }
+
+    float wing = 85.0f + 45.0f * sinf((float) fmod(ph, 2.0 * M_PI));  // ~40..130 deg
     this->cur_[c * 2 + 0] = wing;
-    this->cur_[c * 2 + 1] = left;
+    this->cur_[c * 2 + 1] = 360.0f - wing;
   }
+  this->cc_dirty_ = true;
+}
+
+// A turn rolling across the wall, left to right, that never stops once it has.
+//
+// Both hands sit on one line 180 deg apart, so each clock reads as a single
+// stroke. Every clock STARTS on the same line - the 10:30-4:30 diagonal - so
+// the wall begins uniform; the left column sets off first and the start
+// ripples right. From then on every clock turns at the same constant rate
+// forever, so the angle each column trails its neighbour by settles at exactly
+// WAVE_COL_LAG_DEG and stays there: a fixed fan, nothing overtaking.
+void LvglClock::tick_wave_(double t) {
+  const double rate = 360.0 / WAVE_TURN_S;  // deg/s, once up to speed
+  // Delay per column derived from the angle we want between them, so tuning
+  // the look is a single number in degrees.
+  const double col_delay = WAVE_COL_LAG_DEG / rate;
+
+  double ts = t * this->mode_speed_;
+  for (int c = 0; c < NUM_CLOCKS; c++) {
+    int col, row;
+    wall_pos_(c, col, row);
+    double x = ts - (double) col * col_delay;
+
+    double turned;
+    if (x <= 0.0) {
+      turned = 0.0;  // this column has not set off yet
+    } else if (x < WAVE_RAMP_S) {
+      turned = rate * x * x / (2.0 * WAVE_RAMP_S);  // spinning up
+    } else {
+      turned = rate * (x - WAVE_RAMP_S / 2.0);  // at speed; the fan is now fixed
+    }
+
+    float a = wrap360(WAVE_REST_DEG + (float) fmod(turned, 360.0));  // clockwise
+    this->cur_[c * 2 + 0] = a;
+    this->cur_[c * 2 + 1] = wrap360(a + 180.0f);
+  }
+  this->cc_dirty_ = true;
+}
+
+// A counter-clockwise turn rolling out diagonally, bottom-left to top-right,
+// that never stops once it has.
+//
+// Every clock begins with both hands together on 7:30 - the bottom-left park -
+// so the wall STARTS uniform, exactly as it does on the real thing. The
+// bottom-left corner sets off first and the start ripples along the diagonal,
+// the top-right corner going last. From then on every clock turns at the same
+// constant rate forever, so the offsets they picked up during the roll-out are
+// fixed: no bunching, no overtaking, and nothing ever stops again.
+void LvglClock::tick_spiral_(double t) {
+  // Furthest diagonal step: bottom-left (col 0, bottom row) to top-right.
+  const float span = (float) ((WALL_COLS - 1) + (WALL_ROWS - 1));
+  const double rate = 360.0 / SPIRAL_TURN_S;  // deg/s, once up to speed
+
+  double ts = t * this->mode_speed_;
+  for (int c = 0; c < NUM_CLOCKS; c++) {
+    int col, row;
+    wall_pos_(c, col, row);
+    // Row 0 is the top, so the bottom row is the near end of the diagonal.
+    float diag = (float) col + (float) ((WALL_ROWS - 1) - row);
+    double x = ts - (double) (diag / span) * (SPIRAL_DIAG_LAG_DEG / rate);
+
+    double turned;
+    if (x <= 0.0) {
+      turned = 0.0;  // this clock has not set off yet - still parked
+    } else if (x < SPIRAL_RAMP_S) {
+      turned = rate * x * x / (2.0 * SPIRAL_RAMP_S);  // spinning up
+    } else {
+      turned = rate * (x - SPIRAL_RAMP_S / 2.0);  // at speed; the offset is now fixed
+    }
+
+    float a = wrap360(PARK - (float) fmod(turned, 360.0));  // minus = counter-clockwise
+    this->cur_[c * 2 + 0] = a;
+    this->cur_[c * 2 + 1] = a;
+  }
+  this->cc_dirty_ = true;
+}
+
+// LOVE, held.
+//
+// Not an animation - it just names the pose. Getting there is the ordinary
+// mode-entry blend (staggered left to right) and leaving is the ordinary
+// settle, so the letters sweep in and out like any other mode change.
+//
+// Deliberately only marks the canvas dirty when an angle actually changes:
+// once the blend has finished this is a still image, and redrawing a still
+// image at the render rate is pure SPI traffic on a board driving three panels.
+void LvglClock::tick_love_(double t) {
+  (void) t;
+  bool changed = false;
+  for (int d = 0; d < NUM_DIGITS; d++) {
+    for (int c = 0; c < CLOCKS_PER_DIGIT; c++) {
+      for (int hnd = 0; hnd < 2; hnd++) {
+        int i = (d * CLOCKS_PER_DIGIT + c) * 2 + hnd;
+        float a = LOVE[d][c][hnd];
+        if (this->cur_[i] != a) {
+          this->cur_[i] = a;
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed)
+    this->cc_dirty_ = true;
+}
+
+// A gust bending a stalk, left to right.
+//
+// Read a wall COLUMN top to bottom and the three clocks form one continuous
+// stroke - it leans in at the top left, runs vertically through the middle,
+// and exits bottom right:
+//
+//     row 0   \            hands 10:30 + 6:00
+//              |
+//     row 1    |           hands 12:00 + 6:00  (never moves)
+//              |
+//     row 2    |           hands 12:00 + 4:30
+//               \ .        (the trailing '.' only keeps the backslash off the
+//                           end of the line - a '//' comment ending in '\' is
+//                           a line continuation, and splices the next one in)
+//
+// Each clock's hands meet its neighbours' at the panel edges, so the join is
+// continuous: row 0's 6:00 meets row 1's 12:00, and row 1's 6:00 meets row 2's
+// 12:00. Only the two FREE ends move - the tip poking out at the top and the
+// one at the bottom - and they shear past each other: the top tip sweeps right
+// across the top (10:30 -> 1:30) and the bottom tip left across the bottom
+// (4:30 -> 7:30). The middle row is the trunk and stays put.
+void LvglClock::tick_wind_(double t) {
+  // Rest pose per row: {hand 0, hand 1}, and which hand the wind moves.
+  // WALL_ROWS is 3; index is the row.
+  static const float REST[3][2] = {{315.0f, 180.0f},   // top:    10:30 + 6:00
+                                   {0.0f, 180.0f},     // middle: 12:00 + 6:00
+                                   {0.0f, 135.0f}};    // bottom: 12:00 + 4:30
+  static const int MOVES[3] = {0, -1, 1};  // which hand the gust bends, -1 = none
+  // Both free ends turn CLOCKWISE by the same amount, which is physically
+  // opposite: the top tip sweeps right across the top (10:30 -> 1:30) while the
+  // bottom tip sweeps left across the bottom (4:30 -> 7:30). The stalk shears.
+  static const float SENSE[3] = {1.0f, 0.0f, 1.0f};
+
+  double ts = t * this->mode_speed_;
+
+  for (int c = 0; c < NUM_CLOCKS; c++) {
+    int col, row;
+    wall_pos_(c, col, row);
+
+    // The gust bends the wall over left to right, then RELEASES it right to
+    // left - so the near edge for the return is the far edge of the push. Each
+    // column therefore has two separate start times, mirrored about the middle
+    // of the cycle, rather than one lag applied to both halves.
+    double lag = (double) col / (WALL_COLS - 1) * WIND_SPREAD_S;
+    double rise_at = lag;                                          // left first
+    double fall_at = WIND_RISE_S + 2.0 * WIND_SPREAD_S - lag;      // right first
+
+    double u = fmod(ts, WIND_CYCLE_S);
+    if (u < 0)
+      u += WIND_CYCLE_S;
+
+    float lean;
+    if (u < rise_at) {
+      lean = 0.0f;  // the gust has not reached this column yet
+    } else if (u < rise_at + WIND_RISE_S) {
+      lean = WIND_BEND_DEG * ease((float) ((u - rise_at) / WIND_RISE_S));
+    } else if (u < fall_at) {
+      lean = WIND_BEND_DEG;  // held over while the gust runs on past
+    } else if (u < fall_at + WIND_FALL_S) {
+      lean = WIND_BEND_DEG * (1.0f - ease((float) ((u - fall_at) / WIND_FALL_S)));
+    } else {
+      lean = 0.0f;  // released, back to rest
+    }
+    lean *= SENSE[row];
+
+    for (int hnd = 0; hnd < 2; hnd++) {
+      float a = REST[row][hnd];
+      if (MOVES[row] == hnd)
+        a += lean;
+      this->cur_[c * 2 + hnd] = wrap360(a);
+    }
+  }
+  this->cc_dirty_ = true;
+}
+
+// Take the master's fake minute instead of counting our own. Resets the local
+// interval timer too, so this node does not immediately tick a second time.
+void LvglClock::adopt_demo_min(int m) {
+  m = ((m % (24 * 60)) + 24 * 60) % (24 * 60);
+  if (m == this->demo_min_)
+    return;
+  this->demo_min_ = m;
+  this->demo_last_ms_ = millis();
 }
 
 void LvglClock::tick_demo_(uint32_t now_ms) {
   if (now_ms - this->demo_last_ms_ >= this->demo_interval_ms_) {
     this->demo_last_ms_ = now_ms;
-    this->demo_min_ = (this->demo_min_ + 1) % (24 * 60);
+    this->demo_min_ = (this->demo_min_ + this->demo_step_) % (24 * 60);
   }
   int hh = this->demo_min_ / 60;
   int mm = this->demo_min_ % 60;
@@ -207,7 +800,61 @@ void LvglClock::tick_demo_(uint32_t now_ms) {
 void LvglClock::set_mode(ClockMode m) {
   if (m == this->mode_)
     return;
+  // While a random choreography is playing, outside requests are remembered
+  // rather than obeyed - otherwise the master's once-a-second `show_time`
+  // action (and the same mode arriving over the bus) would chop the animation
+  // up. The recorded mode is what we drop back to when the window closes.
+  if (this->cycle_active_) {
+    this->base_mode_ = m;
+    return;
+  }
+  this->apply_mode_(m);
+}
+
+void LvglClock::apply_mode_(ClockMode m) {
+  if (m == this->mode_)
+    return;
+  ClockMode from = this->mode_;
   this->mode_ = m;
+  this->cc_dirty_ = true;
+  // Leaving a choreography for the clock: settle back column by column, left
+  // to right, rather than the whole wall arriving at once. The choreographies
+  // cross the wall in that direction, so the return reads as the end of the
+  // same gesture instead of a cut. Ordinary digit changes keep the stagger at
+  // 0 and stay simultaneous.
+  if (m == CC_MODE_TIME && is_idle_animation_(from)) {
+    this->anim_stagger_ms_ = COLUMN_STAGGER_MS;
+    this->settle_from_ = from;  // keep it running underneath the settle
+  }
+  if (is_idle_animation_(m)) {
+    // Restart the choreography's own clock, so it always begins at its rest
+    // pose and its first frame is the left edge. Without this, a mode entered
+    // by an action takes its phase from the epoch and lands wherever the cycle
+    // happens to be - which for `wind` means opening on the fully bent pose
+    // and a gust already halfway across.
+    //
+    // update_mode_cycle_() has already set a window-aligned base by the time it
+    // calls us, and that one is deterministic across every node on the wall, so
+    // it wins.
+    // Start the choreography's clock only once the fade-in has finished. While
+    // the fade runs, the tick below is pinned to phase 0 - its rest pose - so
+    // the blend has a STATIC target and every hand is in the same position
+    // before the first thing moves. Without this lead-in the animation runs
+    // during the fade, the blend chases a moving target, and the wall arrives
+    // already mid-gesture and out of step.
+    if (!this->cycle_active_)
+      this->anim_phase_base_ = this->anim_clock_() + this->mode_entry_lead_s_();
+    // Stash where every hand actually is. The choreography's first frame turns
+    // this into the offset that gets eased away, so the hands sweep into the
+    // animation instead of snapping to it. Going the other way needs nothing:
+    // time/demo retarget from wherever they find the hands.
+    for (int i = 0; i < NUM_HANDS; i++)
+      this->blend_off_[i] = this->cur_[i];
+    this->blend_state_ = BLEND_PENDING;
+    this->animating_ = false;  // a digit sweep in flight is superseded
+  } else {
+    this->blend_state_ = BLEND_NONE;
+  }
   if (m == CC_MODE_TIME) {
     this->last_key_ = -1;
     this->animating_ = false;
@@ -218,29 +865,259 @@ void LvglClock::set_mode(ClockMode m) {
   }
 }
 
+
+double LvglClock::mode_entry_lead_s_() const {
+  return (this->transition_ms_ + (double) (WALL_COLS - 1) * COLUMN_STAGGER_MS) / 1000.0;
+}
+
+void LvglClock::blend_into_mode_() {
+  if (this->blend_state_ == BLEND_NONE)
+    return;
+
+  if (this->blend_state_ == BLEND_PENDING) {
+    // cur_[] now holds the choreography's first frame, and blend_off_[] still
+    // holds where the hands were. Convert to "how far, and which way round" -
+    // measured once, so it cannot flip sign later mid-fade.
+    for (int i = 0; i < NUM_HANDS; i++)
+      this->blend_off_[i] = shortest_delta(this->cur_[i], this->blend_off_[i]);
+    this->blend_start_ = millis();
+    this->blend_state_ = BLEND_ACTIVE;
+  }
+
+  uint32_t elapsed = millis() - this->blend_start_;
+  // Staggered by wall column, exactly like the settle back to the time: the
+  // left edge starts moving into the choreography first and the right edge
+  // last. The choreographies themselves cross the wall left to right, so the
+  // move into one reads as the beginning of that gesture rather than as the
+  // whole wall lurching at once.
+  bool all_done = true;
+  for (int i = 0; i < NUM_HANDS; i++) {
+    int col, row;
+    wall_pos_(i / 2, col, row);
+    uint32_t delay = (uint32_t) col * COLUMN_STAGGER_MS;
+
+    // k is how much of this hand's original offset is still applied: 1 before
+    // it starts, 0 once it has arrived on the pure animation.
+    float k;
+    if (this->transition_ms_ == 0) {
+      k = 0.0f;
+    } else if (elapsed <= delay) {
+      k = 1.0f;  // this column has not been reached yet - hold where it was
+      all_done = false;
+    } else {
+      float t = (elapsed - delay) / (float) this->transition_ms_;
+      if (t >= 1.0f) {
+        k = 0.0f;
+      } else {
+        k = 1.0f - ease(t);
+        all_done = false;
+      }
+    }
+    if (k != 0.0f)
+      this->cur_[i] = wrap360(this->cur_[i] + this->blend_off_[i] * k);
+  }
+
+  if (all_done)
+    this->blend_state_ = BLEND_NONE;  // cur_[] is now the pure animation
+  this->cc_dirty_ = true;
+}
+
+void LvglClock::update_mode_cycle_() {
+  // A follower never picks - its mode arrives over the bus. One picker per
+  // wall is the whole point: two independent choosers is how you get eight
+  // boards running eight different choreographies.
+  if (this->mode_follower_)
+    return;
+  if (this->cycle_interval_s_ == 0 || this->cycle_modes_.empty())
+    return;
+
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  // Needs a real clock: the whole scheme is "every node hashes the same
+  // interval number", which is only true once they agree what time it is.
+  if ((uint32_t) tv.tv_sec < 1546300800u) {
+    if (this->cycle_active_) {
+      this->cycle_active_ = false;
+      this->apply_mode_(this->base_mode_);
+    }
+    return;
+  }
+
+  // Shift the whole grid by CYCLE_OFFSET_S so a window opens that many seconds
+  // after the top of the interval, keeping the animation clear of the digit
+  // flip at :00.
+  uint32_t t = (uint32_t) tv.tv_sec - CYCLE_OFFSET_S;
+  uint32_t slot = t / this->cycle_interval_s_;
+  // The window has to hold the whole gesture: fade in to the start pose, the
+  // choreography itself, and the fade back to the time. So it CLOSES one fade
+  // early - otherwise the settle would run on past the window and eat into the
+  // clock's own time. What is left in the middle is the animation proper.
+  double into = (double) (t % this->cycle_interval_s_);
+  bool want = into < (double) CYCLE_WINDOW_S - this->mode_entry_lead_s_();
+
+  if (want) {
+    // Walked in order rather than picked at random, so the sequence is what
+    // the config says and a repeated entry simply comes round more often.
+    ClockMode m = this->cycle_modes_[slot % this->cycle_modes_.size()];
+    // Phase the choreography from the window's own start rather than from the
+    // epoch, so it opens at its rest position and - because every cycle length
+    // divides the window - closes back on one instead of being cut mid-turn.
+    this->anim_phase_base_ =
+        (double) ((uint64_t) slot * this->cycle_interval_s_ + CYCLE_OFFSET_S) +
+        this->mode_entry_lead_s_();
+    if (!this->cycle_active_) {
+      this->cycle_active_ = true;
+      this->base_mode_ = this->mode_;
+      ESP_LOGI(TAG, "Choreography: %s for %us (back to %s after)", clock_mode_name(m),
+               (unsigned) CYCLE_WINDOW_S, clock_mode_name(this->base_mode_));
+    }
+    this->apply_mode_(m);
+  } else if (this->cycle_active_) {
+    this->cycle_active_ = false;
+    // anim_phase_base_ is deliberately left alone: the choreography carries on
+    // running underneath the settle and only stops once that has finished.
+    this->apply_mode_(this->base_mode_);
+  }
+}
+
 void LvglClock::loop() {
   uint32_t now_ms = millis();
-  if (this->style_ == STYLE_CLOCKCLOCK24) {
+  if (this->style_ == STYLE_CLOCKCLOCK24 && this->startup_align_ms_ > 0 &&
+      now_ms < this->startup_align_ms_) {
+    // Startup alignment: every hand straight up, nothing else running. When
+    // the window closes last_key_ is already -1, so the next tick retargets
+    // and the first real sweep starts from 12 on every node at once.
+    //
+    // Swept, not snapped: the hands start at PARK, and dropping them onto 12 in
+    // one frame is the same impossible move as any other teleport. Reuses the
+    // mode-entry blend - target every frame, offset eased away over
+    // transition_length, then it simply holds at 12.
+    if (!this->startup_aligned_) {
+      this->startup_aligned_ = true;
+      for (int i = 0; i < NUM_HANDS; i++)
+        this->blend_off_[i] = this->cur_[i];
+      this->blend_state_ = BLEND_PENDING;
+      this->animating_ = false;
+      this->last_key_ = -1;
+      ESP_LOGI(TAG, "Startup alignment: hands to 12 for %u ms",
+               (unsigned) this->startup_align_ms_);
+    }
+    for (int i = 0; i < NUM_HANDS; i++)
+      this->cur_[i] = 0.0f;  // 0 deg = 12 o'clock
+    this->blend_into_mode_();
+    this->cc_dirty_ = true;
+  } else if (this->style_ == STYLE_CLOCKCLOCK24) {
+    // Decide the mode before drawing it, so a window that opens this frame is
+    // honoured this frame rather than one behind.
+    this->update_mode_cycle_();
+    // Seconds into the current choreography. Negative while the staggered
+    // fade-in is still running, and clamped to 0 there so every choreography
+    // holds its rest pose until the whole wall has arrived on it.
+    double choreo_t = this->anim_clock_() - this->anim_phase_base_;
+    if (choreo_t < 0.0)
+      choreo_t = 0.0;
     switch (this->mode_) {
       case CC_MODE_ROTATE_LEFT:
-        this->tick_rotate_(now_ms);
+        this->tick_rotate_(choreo_t);
+        this->blend_into_mode_();
         break;
       case CC_MODE_FLYING_BIRDS:
-        this->tick_birds_(now_ms);
+        this->tick_birds_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_WAVE:
+        this->tick_wave_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_SPIRAL:
+        this->tick_spiral_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_WIND:
+        this->tick_wind_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_LOVE:
+        this->tick_love_(choreo_t);
+        this->blend_into_mode_();
         break;
       case CC_MODE_DEMO:
         this->tick_demo_(now_ms);
         break;
       case CC_MODE_TIME:
       default:
-        this->tick_time_(now_ms);
+        if (this->settle_from_ != CC_MODE_TIME && this->animating_) {
+          // Winding down out of a choreography: keep it running and fade each
+          // hand's remaining distance to the time away on top of it, rather
+          // than freezing the animation and sweeping from a still pose.
+          this->tick_choreography_(this->settle_from_, choreo_t);
+          if (this->settle_blend_()) {
+            for (int i = 0; i < NUM_HANDS; i++)
+              this->cur_[i] = wrap360(this->target_[i]);
+            this->animating_ = false;
+            this->anim_stagger_ms_ = 0;
+            this->settle_from_ = CC_MODE_TIME;
+            this->anim_phase_base_ = 0.0;
+          }
+        } else {
+          this->tick_time_(now_ms);
+        }
         break;
     }
   }
   if (this->obj == nullptr || now_ms - this->last_render_ms_ < this->render_interval_ms_)
     return;
+  // clockclock24 is static between minute changes - its hands only move during
+  // a transition or an idle animation. Redrawing (and re-blitting the whole
+  // panel over SPI) 60 times a second regardless is pure waste, and on a
+  // single-core C3 pushing 115 KB per frame it is most of the CPU and bus
+  // budget. Every writer of cur_[] sets cc_dirty_; skip the frame otherwise.
+  // The other styles change every second (or sub-second) anyway, so they keep
+  // redrawing unconditionally.
+  // The blinking sync dot changes twice a second on its own, so it counts as
+  // a reason to redraw even when no hand has moved. It also goes dark for good
+  // the moment this node syncs, and sync_dot_on_() folds that in - so the
+  // transition to false here is what clears the last dot off the panel.
+  if (this->sync_dot_) {
+    bool on = this->sync_dot_on_();
+    if (on != this->sync_dot_last_) {
+      this->sync_dot_last_ = on;
+      this->cc_dirty_ = true;
+    }
+  }
+  if (this->style_ == STYLE_CLOCKCLOCK24 && !this->cc_dirty_)
+    return;
+  this->cc_dirty_ = false;
   this->last_render_ms_ = now_ms;
+  if (this->direct_) {
+    // The drawing happens in draw_direct_() when LVGL refreshes; all we do is
+    // mark the area dirty. Timing is accumulated there.
+    if (!this->draw_cb_attached_) {
+      this->draw_cb_attached_ = true;
+      lv_obj_add_event_cb(this->obj, draw_event_cb, LV_EVENT_DRAW_MAIN, this);
+      // LVGL paints the widget background for us; match it to `background`.
+      if (this->transparent_) {
+        lv_obj_set_style_bg_opa(this->obj, LV_OPA_TRANSP, 0);
+      } else {
+        lv_obj_set_style_bg_color(
+            this->obj, lv_color_make(this->background_.r, this->background_.g, this->background_.b),
+            0);
+        lv_obj_set_style_bg_opa(this->obj, LV_OPA_COVER, 0);
+      }
+      lv_obj_set_style_border_width(this->obj, 0, 0);
+      lv_obj_set_style_pad_all(this->obj, 0, 0);
+      ESP_LOGD(TAG, "Direct draw: no canvas, drawing into LVGL's buffer");
+    }
+    lv_obj_invalidate(this->obj);
+    return;
+  }
+  uint32_t t0 = micros();
   this->render_();
+  uint32_t dt = micros() - t0;
+  this->render_us_total_ += dt;
+  this->render_frames_++;
+  if (dt > this->render_us_max_)
+    this->render_us_max_ = dt;
 }
 
 // ---------------------------------------------------------------------------
@@ -368,6 +1245,10 @@ int LvglClock::min_width() const {
       return 24 * 6;  // fixed 24 columns, ~6px per small display
     case STYLE_CLOCKCLOCK24:
     default:
+      // One mini-clock on its own display is just a tiny analogue face; a
+      // whole digit is two of them side by side.
+      if (this->partial_ >= 0)
+        return this->partial_digit_ ? 48 : 24;
       return (int) std::ceil(16.0f * (8.0f + this->spacing_));
   }
 }
@@ -382,6 +1263,8 @@ int LvglClock::min_height() const {
       return 6 * 10;  // fixed 6 rows
     case STYLE_CLOCKCLOCK24:
     default:
+      if (this->partial_ >= 0)
+        return this->partial_digit_ ? 72 : 24;
       return 48;
   }
 }
@@ -401,6 +1284,15 @@ void LvglClock::dump_config() {
   if (is_clockclock24) {
     ESP_LOGCONFIG(TAG, "  Transition: %u ms, movement: %s", (unsigned) this->transition_ms_,
                   MOVES[this->movement_]);
+    if (this->partial_ >= 0 && this->partial_digit_) {
+      ESP_LOGCONFIG(TAG, "  Partial: digit %d of 4 (clocks %d-%d)", this->partial_,
+                    this->partial_ * CLOCKS_PER_DIGIT,
+                    this->partial_ * CLOCKS_PER_DIGIT + CLOCKS_PER_DIGIT - 1);
+    } else if (this->partial_ >= 0) {
+      int cell = this->partial_ % CLOCKS_PER_DIGIT;
+      ESP_LOGCONFIG(TAG, "  Partial: clock %d of 24 (digit %d, row %d, col %d)", this->partial_,
+                    this->partial_ / CLOCKS_PER_DIGIT, cell / 2, cell % 2);
+    }
   }
   ESP_LOGCONFIG(TAG, "  Recommended min: %dx%d px", this->min_width(), this->min_height());
 }
@@ -431,10 +1323,12 @@ void LvglClock::render_() {
     this->size_checked_ = true;
     lv_draw_buf_t *buf = lv_canvas_get_draw_buf(this->obj);
     if (buf == nullptr || buf->data == nullptr) {
+      unsigned bpp = this->transparent_ ? 4 : (this->grayscale_ ? 1 : 2);
       ESP_LOGE(TAG,
                "Canvas draw buffer (%dx%d, ~%u bytes) failed to allocate - not enough free RAM. "
-               "Reduce width/height, lower lvgl's buffer_size, or add PSRAM. Disabling rendering.",
-               w, h, (unsigned) (w * h * (this->transparent_ ? 4 : 2)));
+               "Reduce width/height, lower lvgl's buffer_size, add PSRAM, or set grayscale (half "
+               "the canvas). Disabling rendering.",
+               w, h, (unsigned) (w * h * bpp));
       this->render_ok_ = false;
     }
     int mw = this->min_width(), mh = this->min_height();
@@ -577,29 +1471,89 @@ void LvglClock::canvas_center_(lv_layer_t *layer, int cx, int cy, int r, CenterS
   lv_draw_rect(layer, &d, &a2);
 }
 
+// What clockclock24 draws, wherever it is drawing: the whole 8x3 grid, one
+// digit, or one mini-clock.
+void LvglClock::draw_clockclock_(lv_layer_t *layer, int x0, int y0, int w, int h) {
+  if (this->partial_ >= 0) {
+    if (this->partial_digit_)
+      this->draw_cells_(layer, x0, y0, w, h, this->partial_ * CLOCKS_PER_DIGIT, 2, 3);
+    else
+      this->draw_cells_(layer, x0, y0, w, h, this->partial_, 1, 1);
+    return;
+  }
+  this->draw_grid_(layer, x0, y0, w, h);
+}
+
+// LV_EVENT_DRAW_MAIN handler for direct-draw mode: LVGL has already painted
+// the widget's background into its own draw buffer and hands us the layer, so
+// the hands go straight in - no canvas, and no canvas-to-buffer copy.
+void LvglClock::draw_direct_(lv_event_t *e) {
+  lv_layer_t *layer = lv_event_get_layer(e);
+  lv_area_t coords;
+  lv_obj_get_coords(this->obj, &coords);
+  int w = lv_area_get_width(&coords), h = lv_area_get_height(&coords);
+  if (w <= 0 || h <= 0)
+    return;
+  uint32_t t0 = micros();
+  this->draw_clockclock_(layer, coords.x1, coords.y1, w, h);
+  uint32_t dt = micros() - t0;
+  this->render_us_total_ += dt;
+  this->render_frames_++;
+  if (dt > this->render_us_max_)
+    this->render_us_max_ = dt;
+}
+
 void LvglClock::canvas_clockclock_(int w, int h) {
-  auto to_lv = [](Color c) { return lv_color_make(c.r, c.g, c.b); };
   this->fill_bg_();
+  if (this->partial_ >= 0) {
+    // one mini-clock, or the 2x3 block that makes up one digit
+    if (this->partial_digit_)
+      this->canvas_clockclock_cells_(w, h, this->partial_ * CLOCKS_PER_DIGIT, 2, 3);
+    else
+      this->canvas_clockclock_cells_(w, h, this->partial_, 1, 1);
+    return;
+  }
+  lv_layer_t layer;
+  lv_canvas_init_layer(this->obj, &layer);
+  this->draw_grid_(&layer, 0, 0, w, h);
+  lv_canvas_finish_layer(this->obj, &layer);
+}
+
+// The full 8x3 grid, into any layer at any offset.
+void LvglClock::draw_grid_(lv_layer_t *layer, int x0, int y0, int w, int h) {
+  auto to_lv = [](Color c) { return lv_color_make(c.r, c.g, c.b); };
   float cols = 8.0f + this->spacing_;
   float rows = 3.0f;
+  // Padding eats into the area the cells are sized against: `pad_outside_` at
+  // each edge, and `pad_inside_` in each of the 7 column / 2 row gutters.
+  int pad_in = this->pad_inside_, pad_out = this->pad_outside_;
+  float avail_w = (float) (w - 2 * pad_out - 7 * pad_in);
+  float avail_h = (float) (h - 2 * pad_out - 2 * pad_in);
   // Odd diameter -> true centre pixel per clock (even => hands jump when spinning).
-  int cell = (int) std::min((float) w / cols, (float) h / rows);
+  int cell = (int) std::min(avail_w / cols, avail_h / rows);
   if ((cell & 1) == 0)
     cell -= 1;
   if (cell < 3)
     return;
   int radius = cell / 2;
   int len = (int) (radius * 0.86f);
-  float grid_w = cell * cols, grid_h = cell * rows;
-  int ox = (int) lroundf((w - grid_w) / 2.0f), oy = (int) lroundf((h - grid_h) / 2.0f);
-
-  lv_layer_t layer;
-  lv_canvas_init_layer(this->obj, &layer);
+  float grid_w = cell * cols + 7 * pad_in, grid_h = cell * rows + 2 * pad_in;
+  int ox = x0 + (int) lroundf((w - grid_w) / 2.0f);
+  int oy = y0 + (int) lroundf((h - grid_h) / 2.0f);
   lv_draw_line_dsc_t hand;
   lv_draw_line_dsc_init(&hand);
   hand.color = to_lv(this->pointer_color_());
-  hand.width = this->hand_width_;
-  hand.round_start = hand.round_end = true;
+  // Square ends and +2 px: the real ClockClock's hands are flat-ended bars,
+  // and rounded caps at these sizes round the whole hand away. The +2 is on
+  // top of `hand_width`, so that option still scales the look.
+  hand.width = this->hand_width_ + CC_HAND_EXTRA_PX;
+  // Round at the pivot, square at the tip. The rounded inner cap reaches half
+  // a width past the start point, so it covers a disc around the pivot and the
+  // two hands join cleanly at any angle - a square inner end leaves a notch
+  // between them, worst at 90 deg. The tip stays flat, which is the shape the
+  // real ClockClock's hands have.
+  hand.round_start = true;
+  hand.round_end = false;
 
   bool faces = this->show_face_ && radius > 3;
   lv_draw_rect_dsc_t face;
@@ -616,21 +1570,133 @@ void LvglClock::canvas_clockclock_(int w, int h) {
     int digit = c / CLOCKS_PER_DIGIT;
     int cell_i = c % CLOCKS_PER_DIGIT;
     int col = cell_i % 2, row = cell_i / 2;
-    float gcol = digit * 2 + col + (digit >= 2 ? this->spacing_ : 0.0f);
-    int ccx = ox + (int) lroundf(gcol * cell) + radius;  // integer centre
-    int ccy = oy + row * cell + radius;
+    int col_i = digit * 2 + col;  // 0..7 - also the number of gutters to its left
+    float gcol = col_i + (digit >= 2 ? this->spacing_ : 0.0f);
+    int ccx = ox + (int) lroundf(gcol * cell) + col_i * pad_in + radius;  // integer centre
+    int ccy = oy + row * (cell + pad_in) + radius;
     if (faces) {
       lv_area_t area = {ccx - radius + 1, ccy - radius + 1, ccx + radius - 1, ccy + radius - 1};
-      lv_draw_rect(&layer, &face, &area);
+      lv_draw_rect(layer, &face, &area);
     }
     float a0 = this->cur_[c * 2 + 0];
     float a1 = this->cur_[c * 2 + 1];
-    this->canvas_hand_(&layer, &hand, ccx, ccy, len, a0);
+    this->canvas_hand_(layer, &hand, ccx, ccy, len, a0);
     float delta = fmodf(fabsf(a1 - a0), 360.0f);
     if (delta > 0.5f && delta < 359.5f)
-      this->canvas_hand_(&layer, &hand, ccx, ccy, len, a1);
+      this->canvas_hand_(layer, &hand, ccx, ccy, len, a1);
   }
+  if (this->sync_dot_ && this->sync_dot_on_())
+    this->draw_sync_dot_(layer, x0 + w / 2, y0 + h - std::max(2, cell / 8),
+                         std::max(2, cell / 10));
+}
+
+bool LvglClock::sync_dot_on_() const {
+  // A synced node shows nothing: the dot marks a fault, not a heartbeat.
+  if (this->synced_)
+    return false;
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  return tv.tv_usec < 120000;  // first 120 ms of every second
+}
+
+void LvglClock::draw_sync_dot_(lv_layer_t *layer, int cx, int cy, int r) {
+  lv_draw_rect_dsc_t dot;
+  lv_draw_rect_dsc_init(&dot);
+  dot.radius = LV_RADIUS_CIRCLE;
+  dot.bg_color = lv_color_make(this->pointer_color_().r, this->pointer_color_().g,
+                               this->pointer_color_().b);
+  dot.bg_opa = LV_OPA_COVER;
+  lv_area_t area = {cx - r, cy - r, cx + r, cy + r};
+  lv_draw_rect(layer, &dot, &area);
+}
+
+// A rectangular block of the 24 clocks, scaled to fill the canvas - the
+// `partial:` modes that let separate displays act as one physical ClockClock
+// 24. `first` is the index of the top-left clock, and indices run row-major
+// two-wide, which is exactly how a digit is laid out (cell = row * 2 + col):
+//
+//   1x1 starting at 7  -> just clock 7
+//   2x3 starting at 6  -> all of digit 1
+//
+// The animation engine above still runs all 24 clocks on every node; this only
+// picks which of them get drawn, so every node stays in step as long as their
+// clocks agree.
+void LvglClock::canvas_clockclock_cells_(int w, int h, int first, int cols, int rows) {
+  lv_layer_t layer;
+  lv_canvas_init_layer(this->obj, &layer);
+  this->draw_cells_(&layer, 0, 0, w, h, first, cols, rows);
   lv_canvas_finish_layer(this->obj, &layer);
+}
+
+void LvglClock::draw_cells_(lv_layer_t *layer, int x0, int y0, int w, int h, int first, int cols,
+                            int rows) {
+  auto to_lv = [](Color c) { return lv_color_make(c.r, c.g, c.b); };
+  int pad_in = this->pad_inside_, pad_out = this->pad_outside_;
+  // Odd diameter -> a true centre pixel (even => the hands wobble when spinning).
+  int cell = std::min((w - 2 * pad_out - (cols - 1) * pad_in) / cols,
+                      (h - 2 * pad_out - (rows - 1) * pad_in) / rows);
+  if ((cell & 1) == 0)
+    cell -= 1;
+  if (cell < 3)
+    return;
+  int radius = cell / 2;
+  int len = (int) (radius * 0.86f);
+  int grid_w = cell * cols + (cols - 1) * pad_in, grid_h = cell * rows + (rows - 1) * pad_in;
+  int ox = x0 + (w - grid_w) / 2, oy = y0 + (h - grid_h) / 2;
+
+  bool faces = this->show_face_ && radius > 3;
+  lv_draw_rect_dsc_t face;
+  if (faces) {
+    lv_draw_rect_dsc_init(&face);
+    face.radius = LV_RADIUS_CIRCLE;
+    face.bg_color = to_lv(this->face_fill_color_());
+    face.bg_opa = LV_OPA_COVER;
+    face.border_color = to_lv(this->face_border_color_());
+    // The full-grid path draws a 1px rim on a ~20px clock; scale it here so a
+    // 240px face doesn't get a hairline border.
+    face.border_width = std::max(1, radius / 20);
+    face.border_opa = LV_OPA_COVER;
+  }
+
+  lv_draw_line_dsc_t hand;
+  lv_draw_line_dsc_init(&hand);
+  hand.color = to_lv(this->pointer_color_());
+  // hand_width_ is tuned for ~20px mini-clocks in the grid; blown up to a
+  // full panel a fixed 1px hand would be a thread, so scale with the radius.
+  // Square ends, same as the grid path - see there.
+  hand.width = std::max(this->hand_width_ + CC_HAND_EXTRA_PX, radius / CC_HAND_RADIUS_DIV);
+  // Round at the pivot, square at the tip - see the grid path for why.
+  hand.round_start = true;
+  hand.round_end = false;
+
+  for (int c = 0; c < cols * rows; c++) {
+    int index = first + c;
+    if (index < 0 || index >= NUM_CLOCKS)
+      continue;
+    int ccx = ox + (c % cols) * (cell + pad_in) + radius;
+    int ccy = oy + (c / cols) * (cell + pad_in) + radius;
+    if (faces) {
+      lv_area_t area = {ccx - radius + 1, ccy - radius + 1, ccx + radius - 1, ccy + radius - 1};
+      lv_draw_rect(layer, &face, &area);
+    }
+    float a0 = this->cur_[index * 2 + 0];
+    float a1 = this->cur_[index * 2 + 1];
+    this->canvas_hand_(layer, &hand, ccx, ccy, len, a0);
+    // Both hands overlapping exactly is how a "blank" cell is drawn - skip the
+    // second one so it doesn't fatten the first.
+    float delta = fmodf(fabsf(a1 - a0), 360.0f);
+    if (delta > 0.5f && delta < 359.5f)
+      this->canvas_hand_(layer, &hand, ccx, ccy, len, a1);
+    // Sync dot on the first cell only: one blink per node is the point.
+    if (c == 0 && this->sync_dot_ && this->sync_dot_on_()) {
+      // 1:30 on the face (45 deg), out from the centre - clear of both hands
+      // at most angles and never mistaken for one.
+      const float k = 0.7071f;  // sin(45) = cos(45)
+      int rp = (int) (radius * 0.72f);
+      this->draw_sync_dot_(layer, ccx + (int) lroundf(k * rp), ccy - (int) lroundf(k * rp),
+                           std::max(2, radius / 14));
+    }
+  }
 }
 
 int LvglClock::tick_width_(int R, TickSize s) {

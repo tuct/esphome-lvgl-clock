@@ -1,0 +1,82 @@
+# Board + pin map for the 4-screen ClockClock 24, on a Seeed Studio XIAO
+# ESP32-S3 (8 MB PSRAM). Same shape as
+# ../digital_clock_clock_24_24_round_screens/common_base_esp32_s3_xiao.yaml -
+# this build just drives two rectangular panels per board instead of three
+# round ones.
+#
+# Pins are the XIAO's silkscreen labels (ESPHome knows them for this board):
+# D0 = GPIO1, D1 = GPIO2, D2 = GPIO3, D3 = GPIO4, D4 = GPIO5, D5 = GPIO6,
+# D6 = GPIO43, D7 = GPIO44, D8 = GPIO7, D9 = GPIO8, D10 = GPIO9.
+
+substitutions:
+  # SPI bus - shared by both panels.
+  clk_pin: "D8"     # GPIO7,  SCK
+  mosi_pin: "D10"   # GPIO9,  MOSI
+  miso_pin: "D9"    # GPIO8,  MISO
+  # Shared by both panels: one DC line and one reset line, so each panel only
+  # costs a chip select.
+  dc_pin: "D3"      # GPIO4
+  reset_pin: "D2"   # GPIO3  - also a strapping pin (JTAG source select); fine
+                    #          as a reset output, but don't hold it low at boot
+  # One chip select per panel.
+  cs_pin_a: "D4"    # GPIO5
+  cs_pin_b: "D5"    # GPIO6
+  # Sync bus. D1/GPIO2 is clean: no strapping function, no ROM UART.
+  #
+  # It must not be D6/GPIO43 - that is the ROM's UART0 TX, and every S3 drives
+  # it as an output for the first ~200 ms of a boot. A slave with the bus there
+  # would be fighting the master's driver on every power-up, which presents as
+  # "the second board comes up but never shows the time".
+  sync_pin: "D1"    # GPIO2
+
+# These match the carrier PCB in PCB/ - the board is the authority, not this
+# file. They are also the same assignments the 24-round-screen carrier uses, so
+# the two PCB builds share one pin map.
+#
+# For the older hand-wired prototype, flash board_a_hand.yaml / board_b_hand.yaml
+# instead: they are these same configs with the four moved pins overridden.
+
+esp32:
+  board: seeed_xiao_esp32s3
+  framework:
+    type: esp-idf
+
+# The XIAO ESP32-S3 carries 8 MB of octal PSRAM - required for LVGL at these
+# panel sizes.
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+
+# No `wifi:` / `ota:` here on purpose - they live in board_a.yaml. A slave
+# takes the time off the UART and needs no network at all, so one board holds
+# the credentials and the SNTP dependency. The cost is that the slave is
+# flashed over USB.
+external_components:
+  - source: ../../components
+    components: [lvgl_clock]
+
+# marker only - enables the lvgl_clock widget, takes no options itself.
+lvgl_clock:
+
+# Black on white - this build is the light-themed variant. `grayscale: true` on
+# the widgets halves the draw buffer, and with no colour in the design that
+# costs nothing.
+color:
+  - id: cc_hands
+    red: 0%
+    green: 0%
+    blue: 0%
+  - id: cc_bg
+    red: 100%
+    green: 100%
+    blue: 100%
+  - id: cc_faces  # unlit "ghost" little-clock faces
+    red: 12%
+    green: 12%
+    blue: 14%
+  - id: cc_border  # little-clock rim
+    red: 50%
+    green: 50%
+    blue: 50%

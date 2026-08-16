@@ -1,0 +1,42 @@
+# lvgl_clock - EXPERIMENTAL direct_draw benchmark.
+#
+# Same two-display setup as example_clockclock24_4_screens_bw.yaml, but the
+# widget draws straight into LVGL's draw buffer from a DRAW_MAIN event instead
+# of owning a canvas. That removes both the canvas RAM and the per-frame copy
+# of the canvas into LVGL's buffer.
+#
+# Compare the log against the canvas build:
+#   Animation done in NNNN ms: NN frames, draw avg X ms, max Y ms
+#
+# Note `draw avg` now measures drawing inside LVGL's refresh pass, so it counts
+# the same work but at a different point in the pipeline - the number that
+# matters is frames per animation.
+
+esphome:
+  name: cc24-direct
+
+packages:
+  base: !include common_base_esp32_s3_xiao.yaml
+  display: !include common_tft_1_8_spi_st7735_128_160.yaml
+
+lvgl:
+  rotation: 0
+  widgets:
+    - lvgl_clock:
+        id: dc
+        time_id: clock_time
+        width: ${clock_height}
+        height: ${clock_width}
+        align: CENTER
+        style: clockclock24
+        direct_draw: true      # <- no canvas
+        foreground: cc_hands
+        background: cc_bg
+        clockclock24:
+          partial:
+            mode: digit
+            index: 0
+          movement: long
+          mode: demo
+          demo_interval: 5s
+          show_face: false

@@ -12,10 +12,14 @@ display:
   - platform: mipi_spi
     id: my_display
     model: "ST7735"
-    data_rate: 80MHz
-    reset_pin: ${reset_pin}
-    cs_pin: ${cs_pin}
-    dc_pin: ${dc_pin}
+    setup_priority: 810
+#    data_rate: 80MHz
+    reset_pin: 
+      number: ${reset_pin}
+    cs_pin: 
+      number: ${cs_pin}
+    dc_pin: 
+      number: ${dc_pin}
     rotation: 0
     dimensions:
       width: 128

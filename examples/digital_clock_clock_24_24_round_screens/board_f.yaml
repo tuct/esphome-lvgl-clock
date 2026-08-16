@@ -1,0 +1,10 @@
+# ClockClock 24 - board F: wall column 5, mini-clocks 13 / 15 / 17.
+# A listener. Everything else lives in common_slave.yaml.
+
+packages:
+  slave: !include common_slave.yaml
+
+substitutions:
+  clock_index_a: "13"
+  clock_index_b: "15"
+  clock_index_c: "17"

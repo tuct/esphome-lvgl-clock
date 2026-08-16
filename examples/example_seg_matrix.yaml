@@ -21,7 +21,7 @@ lvgl:
   widgets:
     - lvgl_clock:
         id: dc
-        time_id: sntp_time
+        time_id: clock_time
         width: ${clock_width}
         height: ${clock_height}
         align: CENTER

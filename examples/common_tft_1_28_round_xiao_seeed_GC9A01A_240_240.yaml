@@ -1,0 +1,103 @@
+# 1.28" 240x240 round IPS (GC9A01A) + touch + RTC + the LVGL display binding:
+# the Seeed Studio Round Display for XIAO, a 39 mm disc that plugs straight
+# onto a XIAO - https://wiki.seeedstudio.com/get_start_round_display/
+#
+# XIAO-ONLY: pair it with common_base_esp32_s3_xiao.yaml, whose pin
+# substitutions already match this shield's fixed wiring. The pins it doesn't
+# cover (touch, backlight) are substitutions at the top of this file.
+#
+#   D8 / D10 / D9 = SCK / MOSI / MISO   (shared with the microSD slot)
+#   D1 = LCD CS, D3 = LCD DC, D6 = backlight, no LCD reset line
+#   D4 / D5 = I2C SDA / SCL             (CHSC6X touch panel + PCF8563 RTC)
+#   D7 = touch interrupt, D2 = microSD CS, D0 = battery voltage
+#
+# The face is square (240x240) and round glass, so a full-screen `analog` or
+# `clockclock24` fits; `seg_matrix` (~4:1) does not.
+#
+# DARK SCREEN, OR "SCL is held LOW on the bus" / "Found no devices"?
+# The shield has a physical switch that has to be ON. It gates both the
+# backlight AND the I2C bus, so with it off you get a black panel, an 11-second
+# stall in `Setup i2c`, and pcf8563 marked FAILED - all at once, and no YAML
+# change fixes any of it. Flip the switch and all three clear up.
+#
+# The pins below match the official ESPHome chsc6x example for this shield
+# (https://esphome.io/components/touchscreen/chsc6x/), so if the log shows
+# CLK GPIO7 / CS GPIO2 / DC GPIO4 / SDA GPIO5 / SCL GPIO6 the config is right.
+
+substitutions:
+  # Display dimensions - used for the LVGL display buffer size and for the clock widget
+  clock_width: "240"
+  clock_height: "240"
+  # Pins the base package doesn't know about - touch, backlight, I2C. The SPI
+  # bus and the display's CS/DC come from the base's pin substitutions, which
+  # already match this shield.
+  touch_sda_pin: "D4"   # GPIO5  - shared with the RTC
+  touch_scl_pin: "D5"   # GPIO6  - shared with the RTC
+  touch_irq_pin: "D7"   # GPIO44
+  backlight_pin: "D6"   # GPIO43
+
+spi:
+  clk_pin: ${clk_pin}
+  mosi_pin: ${mosi_pin}
+  miso_pin: ${miso_pin}
+
+# Touch panel and RTC share this bus.
+i2c:
+  sda: ${touch_sda_pin}
+  scl: ${touch_scl_pin}
+
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: "GC9A01A"
+    data_rate: 80MHz
+    cs_pin: ${cs_pin}
+    dc_pin: ${dc_pin}
+    invert_colors: true
+    dimensions:
+      width: 240
+      height: 240
+
+# CHSC6X capacitive touch. The clock itself needs no input, but LVGL picks it
+# up so any widget you add next to it (buttons, pages) is touchable.
+touchscreen:
+  - platform: chsc6x
+    id: my_touchscreen
+    interrupt_pin: ${touch_irq_pin}
+
+# The panel stays dark until the backlight is on. As a `light:` it can also be
+# dimmed or switched from Home Assistant / an automation.
+output:
+  - platform: ledc
+    pin: ${backlight_pin}
+    id: backlight_output
+
+light:
+  - platform: monochromatic
+    output: backlight_output
+    id: backlight
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+
+# On-board PCF8563 RTC (CR927 coin cell). It reads into the system clock every
+# hour, so the clock still shows the right time after a reboot with no network;
+# the interval below pushes a fresh SNTP time back into it once a day.
+# `clock_time` comes from the base package.
+time:
+  - platform: pcf8563
+    id: rtc_time
+    update_interval: 1h
+
+interval:
+  - interval: 24h
+    then:
+      - if:
+          condition:
+            lambda: "return id(clock_time).now().is_valid();"
+          then:
+            - pcf8563.write_time: rtc_time
+
+lvgl:
+  displays: [my_display]
+  touchscreens: [my_touchscreen]
+  bg_color: 0x000000

@@ -1,0 +1,79 @@
+# ONE panel: its LVGL instance and the single DIGIT it renders.
+#
+# Included twice per board from common.yaml with `vars:`, so every setting
+# below exists exactly once no matter how many panels a board drives. Only four
+# things differ per panel, and they are the four vars:
+#
+#   lvgl_id      the LVGL instance id
+#   display_id   the display it drives
+#   widget_id    the lvgl_clock widget id (the FIRST one on a board is that
+#                board's mode picker - see board_a.yaml)
+#   clock_digit  which digit of HH:MM this panel draws (0-3)
+#
+# Unlike the 24-round-screen build, a panel here is a whole digit - six
+# mini-clocks in a 2x3 block - not one mini-clock.
+
+lvgl:
+  - id: ${lvgl_id}
+    # Block form, not [${display_id}] - inside a flow sequence the `${` opens
+    # what YAML reads as a flow mapping and the parse fails.
+    displays:
+      - ${display_id}
+    # The panel is landscape 320x240 and the digit block is portrait, so the
+    # whole instance is rotated and the widget is 240x320.
+    rotation: 90
+    bg_color: 0x000000
+    buffer_size: 100%
+    widgets:
+      - lvgl_clock:
+          id: ${widget_id}
+          direct_draw: true
+          time_id: clock_time      # defined by the role file
+          width: 240
+          height: 320
+          align: CENTER
+          style: clockclock24
+          foreground: cc_hands
+          background: cc_bg
+          # No colour in this design, so half the draw buffer for free.
+          grayscale: true
+          clockclock24:
+            partial:
+              mode: digit
+              index: ${clock_digit}
+            movement: long         # opposite | clockwise | counter | long
+            transition_length: 5s
+            # No `mode:` here on purpose. It would only describe the first
+            # second of this panel's life - board_a.yaml's interval takes over
+            # on the master, and the sync packet takes over on the slave.
+            # Idle-animation speed, x1.0 = the base rates. Halved: at x1.0 the
+            # wall reads as frantic. Must be the SAME on both boards - it
+            # scales the time base, so different values fall out of phase.
+            mode_speed: 1
+            # Step through these choreographies, one per minute, each running
+            # from :10 to :45 and then back to the time. The list is walked in
+            # order and wraps; repeat an entry to show it more often. Only the
+            # picker widget acts on this - the rest are followers and are
+            # handed the mode over the bus.
+            cycle_modes:
+              interval: 1min   # cadence only - the 35s window at :10 is fixed
+              modes:
+#                - birds
+#                - love
+                - wave
+                - spiral
+                - wind
+            spacing: 0.0           # gap between HH and MM, in clock-widths
+            padding_inside: 3      # px gutter between neighbouring clocks
+            # Every hand straight up for the first 10 s: proves each panel is
+            # alive and mounted the right way up, and the first sweep then
+            # starts from the same position on both boards.
+            startup_align: 10s
+            # Dot at 1:30, flashing 120 ms every second, shown ONLY while this
+            # board is out of sync. A healthy wall shows nothing; a panel still
+            # blinking has not heard a usable time from the master, which never
+            # shows it - it is the time source.
+            sync_dot: true
+            show_face: false
+            face_color: cc_bg
+            border_color: cc_border

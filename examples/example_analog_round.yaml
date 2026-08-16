@@ -6,8 +6,8 @@ esphome:
   name: lvgl-clock-analog
 
 packages:
-  base: !include common_base_esp32_s3_devkit.yaml
-  display: !include common_tft_1_69_spi_st7789v2_240_280.yaml
+  base: !include common_base_esp32_s3_xiao.yaml
+  display: !include common_tft_1_28_round_xiao_seeed_GC9A01A_240_240.yaml
 
 # extra colours beyond the base package's cc_hands/cc_bg/cc_faces, just to
 # make the per-hand/per-ring colour overrides visually distinct below.

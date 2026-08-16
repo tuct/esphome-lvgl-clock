@@ -1,0 +1,82 @@
+# ONE panel: its LVGL instance and the single mini-clock it renders.
+#
+# Included three times from common.yaml with `vars:`, so every setting below
+# exists exactly once no matter how many panels a board drives. Only four
+# things differ per panel, and they are the four vars:
+#
+#   lvgl_id      the LVGL instance id
+#   display_id   the display it drives
+#   widget_id    the lvgl_clock widget id (the FIRST one is the wall's picker -
+#                see board_a.yaml)
+#   clock_index  which of the 24 mini-clocks this panel draws
+#
+# Everything else - and it is nearly everything - is shared by construction.
+# Adding a fourth panel is four lines in common.yaml, not another copy of this.
+
+lvgl:
+  - id: ${lvgl_id}
+    # Block form, not [${display_id}] - inside a flow sequence the `${` opens
+    # what YAML reads as a flow mapping and the parse fails.
+    displays:
+      - ${display_id}
+    bg_color: 0x000000
+    buffer_size: 100%
+    widgets:
+      - lvgl_clock:
+          id: ${widget_id}
+          direct_draw: true
+          time_id: clock_time      # defined by the role file
+          # The panel is 240x240 and the clock fills it. A constant of the
+          # hardware, so it is written here rather than routed through a
+          # substitution nothing else reads.
+          width: 240
+          height: 240
+          align: CENTER
+          style: clockclock24
+          # 30 fps. Each panel needs ~11.5 ms for a full frame at 80 MHz and
+          # all three share one bus, so ~34 ms is the floor for a full sweep -
+          # asking for 60 fps just starves the next frame.
+          render_interval: 33ms
+          foreground: cc_hands
+          background: cc_bg
+          clockclock24:
+            partial:
+              mode: clock
+              index: ${clock_index}
+            movement: opposite     # opposite | clockwise | counter | long
+            transition_length: 4s
+            # No `mode:` here on purpose. It would only describe the first
+            # second of this panel's life - board_a.yaml's interval takes over
+            # on the master, and the sync packet takes over on every slave. The
+            # wall's mode is owned by the master at runtime, so setting it per
+            # panel at compile time is a value that is always about to be
+            # overwritten. The default (time) is the right thing to start on.
+            # Idle-animation speed, x1.0 = the base rates. Halved here: a real
+            # ClockClock's hands move deliberately, and at x1.0 the wall reads
+            # as frantic. Must be the SAME on every board - it scales the time
+            # base, so two boards on different values fall out of phase.
+            mode_speed: 0.5
+            # Step through these choreographies, one per minute, each running
+            # from :10 to :45 and then back to the time. The list is walked in
+            # order and wraps; repeat an entry to show it more often. Only the
+            # picker widget acts on this - the rest are followers and are
+            # handed the mode over the bus.
+            cycle_modes:
+              interval: 1min   # cadence only - the 35s window at :10 is fixed
+              modes:
+                - birds
+                - wave
+                - spiral
+                - wind
+            # Every hand straight up for the first 10 s: proves each panel is
+            # alive and mounted the right way up, and the first sweep then
+            # starts from the same position on every node.
+            startup_align: 10s
+            # Dot at 1:30, flashing 120 ms every second, shown ONLY while this
+            # board is out of sync. A healthy wall shows nothing; a panel still
+            # blinking has not heard a usable time from the master. The master
+            # never shows it - it is the time source.
+            sync_dot: true
+            # Off on purpose: a filled 240 px disc is the single most expensive
+            # thing in the frame, and in white-on-black it is invisible anyway.
+            show_face: false
