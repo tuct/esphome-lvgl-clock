@@ -646,6 +646,10 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // that lands mid-sweep is held back until the hands have arrived, so the
   // face never jumps from one number to another. See tick_temp_().
   int shown_temp_{TEMP_NONE};
+  // Seconds left in the current choreography window, or effectively forever
+  // when the mode was set by an action rather than the cycle. tick_temp_()
+  // checks it before starting a sweep to a new reading.
+  double cycle_left_s_{1e9};
   ClockMode settle_from_{CC_MODE_TIME};
   float settle_delta_[NUM_HANDS];
   float settle_prev_[NUM_HANDS];

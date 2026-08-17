@@ -495,6 +495,10 @@ static const uint32_t COLUMN_STAGGER_MS = 250;
 // (`interval:`) is exposed - the rest is the difference between a clock that
 // occasionally does something and a disco.
 static const uint32_t CYCLE_WINDOW_S = 35;
+// Slack required on top of the sweep before `temp` will pick up a new reading -
+// see tick_temp_(). Without it a reading landing right on the boundary starts a
+// move that the settle immediately interrupts.
+static const double TEMP_UPDATE_BUFFER_S = 1.0;
 static const uint32_t CYCLE_OFFSET_S = 10;
 
 // `wave` timing, in seconds at mode_speed 1.0 - see tick_wave_().
@@ -784,7 +788,13 @@ void LvglClock::tick_temp_(double t) {
   //   - mid-sweep (a blend is running), the new value waits its turn;
   //   - otherwise it is taken, and the hands SWEEP to it on the ordinary
   //     mode-entry blend, staggered left to right like every other change.
-  if (this->blend_state_ == BLEND_NONE) {
+  // Only take a new reading if the sweep to it can actually finish before the
+  // face is swept away again - the move takes a full mode-entry lead, and
+  // starting one that gets cut off half way looks like a fault. TEMP_SETTLE_
+  // BUFFER_S is slack on top so it does not land exactly on the boundary.
+  bool time_to_move = this->cycle_left_s_ > this->mode_entry_lead_s_() + TEMP_UPDATE_BUFFER_S;
+
+  if (this->blend_state_ == BLEND_NONE && time_to_move) {
     int latest = this->temperature_value();
     if (latest != this->shown_temp_) {
       for (int i = 0; i < NUM_HANDS; i++)
@@ -1120,7 +1130,10 @@ void LvglClock::update_mode_cycle_() {
   // early - otherwise the settle would run on past the window and eat into the
   // clock's own time. What is left in the middle is the animation proper.
   double into = (double) (t % this->cycle_interval_s_);
-  bool want = into < (double) CYCLE_WINDOW_S - this->mode_entry_lead_s_();
+  double closes_at = (double) CYCLE_WINDOW_S - this->mode_entry_lead_s_();
+  bool want = into < closes_at;
+  // How long a face has left before the settle back to the time begins.
+  this->cycle_left_s_ = want ? (closes_at - into) : 1e9;
 
   if (want) {
     // Walked in order rather than picked at random, so the sequence is what
