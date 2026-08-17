@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <sys/time.h>
+#include <cmath>
 
 namespace esphome {
 namespace lvgl_clock {
@@ -87,9 +88,24 @@ void SyncTime::update() {
     if (mode == (int) CC_MODE_DEMO && demo_min >= 0)
       this->clocks_[i]->adopt_demo_min(demo_min);
   }
+  // The wall's temperature, from the master's sensor. TEMP_NONE when there is
+  // no sensor or it has not published - the slaves then know to skip `temp`
+  // rather than draw a stale or empty face.
+  int temp = TEMP_NONE;
+#ifdef USE_SENSOR
+  if (this->temp_sensor_ != nullptr && this->temp_sensor_->has_state() &&
+      !std::isnan(this->temp_sensor_->state))
+    temp = (int) lroundf(this->temp_sensor_->state);
+#endif
+  // The master's own panels read it from here too, so master and slaves are
+  // fed by exactly the same path.
+  for (auto *clock : this->clocks_)
+    clock->adopt_temperature(temp);
+  this->last_temp_ = temp;
+
   char out[48];
-  int n = snprintf(out, sizeof(out), "CC24 %u %u %d %d\n", (unsigned) epoch, (unsigned) ms, mode,
-                   demo_min);
+  int n = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d\n", (unsigned) epoch, (unsigned) ms, mode,
+                   demo_min, temp);
   if (n <= 0)
     return;
 
@@ -111,8 +127,8 @@ void SyncTime::update() {
     // Re-format with the corrected stamp. The length can shift by a digit,
     // which moves the wire time by <0.1 ms - far below the jitter this is
     // correcting for, so one pass is enough.
-    int n2 = snprintf(out, sizeof(out), "CC24 %u %u %d %d\n", (unsigned) adj_epoch,
-                      (unsigned) adj_ms, mode, demo_min);
+    int n2 = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d\n", (unsigned) adj_epoch,
+                      (unsigned) adj_ms, mode, demo_min, temp);
     if (n2 > 0)
       n = n2;
   }
@@ -243,6 +259,12 @@ void SyncTime::handle_line_() {
   int demo_min = (int) strtol(p, &end, 10);
   if (end == p)
     demo_min = -1;
+  p = end;
+  // Optional 5th field: the master's temperature in whole degrees. Absent from
+  // an older master's packets, which simply reads as "no reading".
+  int temp = (int) strtol(p, &end, 10);
+  if (end == p)
+    temp = TEMP_NONE;
 
   // epoch 0 is the master saying "I have no time yet, but here is the mode" -
   // that is how the boot animation reaches the wall before SNTP lands, and how
@@ -280,6 +302,13 @@ void SyncTime::handle_line_() {
       this->time_sync_callback_.call();
     }
   }
+
+  if (temp != this->last_temp_) {
+    this->last_temp_ = temp;
+    ESP_LOGD(TAG, "RX temperature -> %d C", temp);
+  }
+  for (auto *clock : this->clocks_)
+    clock->adopt_temperature(temp);
 
   // set_mode() is a no-op when the mode is unchanged, so this is safe to call
   // on every packet. Every widget on this node gets it: on a multi-panel board

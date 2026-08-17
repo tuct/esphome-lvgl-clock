@@ -73,6 +73,21 @@ static const float LOVE[NUM_DIGITS][CLOCKS_PER_DIGIT][2] = {
     {{90, 180}, {270, 270}, {0, 180}, {270, 270}, {0, 90}, {270, 270}},      // E
 };
 
+// Extra glyphs for `temp`, in the same {hand0, hand1} form as FONT: a degree
+// sign, a C, a minus, and a blank. The degree sits in the top two rows only,
+// which is what makes it read as a raised ring rather than another O.
+enum TempGlyph { TG_DEGREE = 0, TG_C, TG_MINUS, TG_BLANK };
+static const float TEMP_GLYPHS[4][CLOCKS_PER_DIGIT][2] = {
+    // degree: a closed ring in the upper two thirds
+    {{90, 180}, {180, 270}, {0, 90}, {0, 270}, {PARK, PARK}, {PARK, PARK}},
+    // C: an O with the right side left open
+    {{90, 180}, {270, 270}, {0, 180}, {PARK, PARK}, {0, 90}, {270, 270}},
+    // minus: one bar on the middle row
+    {{PARK, PARK}, {PARK, PARK}, {90, 90}, {270, 270}, {PARK, PARK}, {PARK, PARK}},
+    // blank
+    {{PARK, PARK}, {PARK, PARK}, {PARK, PARK}, {PARK, PARK}, {PARK, PARK}, {PARK, PARK}},
+};
+
 static inline float wrap360(float a) { return fmodf(fmodf(a, 360.0f) + 360.0f, 360.0f); }
 
 // Signed shortest way round from `a` to `b`, in (-180, 180].
@@ -196,6 +211,15 @@ void LvglClock::retarget_() {
         float delta;
         if (cw < 0.001f) {
           delta = 0.0f;
+        } else if (this->settle_from_ != CC_MODE_TIME) {
+          // Settling back out of a choreography: always take the SHORTEST way
+          // round, whatever `movement:` says. That option is about the drama of
+          // a digit change, where every hand starts from rest and the distance
+          // is chosen for effect. Here the hands are already moving and the
+          // sweep has to look like the animation winding down - and `long`
+          // would send them up to 360 deg in transition_length, roughly four
+          // times the speed the choreography was running at.
+          delta = (cw <= 180.0f) ? cw : ccw;
         } else {
           switch (this->movement_) {
             case CC_MOVE_CLOCKWISE:
@@ -268,6 +292,9 @@ void LvglClock::tick_choreography_(ClockMode m, double t) {
       break;
     case CC_MODE_LOVE:
       this->tick_love_(t);
+      break;
+    case CC_MODE_TEMP:
+      this->tick_temp_(t);
       break;
     default:
       break;
@@ -525,10 +552,13 @@ static const double SPIRAL_RAMP_S = 1.0;      // spin-up, per clock
 //
 // Sums to 15 s, so a whole number of gusts fills the window at both
 // mode_speed 1.0 and 0.5.
-// How far the two free ends SWING: 10:30 -> 1:30 at the top and 4:30 -> 7:30
-// at the bottom, i.e. 45 deg either side of the 12:00-6:00 trunk axis. The
-// MIDDLE row never moves.
-static const float WIND_BEND_DEG = 90.0f;
+// How far the two free ends SWING: 10:30 -> 12:30 at the top and 4:30 -> 6:30
+// at the bottom. The MIDDLE row never moves.
+//
+// 60 rather than 90 buys a visibly localised crest. The two are coupled by the
+// 15 deg-per-column rule - see WIND_CREST_COLS - and at 90 the narrowest crest
+// that fits is 10 columns, wider than the wall, so nothing ever looked flat.
+static const float WIND_BEND_DEG = 60.0f;
 // RISE and FALL are floored by a hard constraint: NEIGHBOURING COLUMNS MUST
 // NEVER DIFFER BY MORE THAN 15 DEG. A column lags its left neighbour by
 // SPREAD/(WALL_COLS-1), and an eased ramp peaks at 1.875x its average rate, so
@@ -536,16 +566,32 @@ static const float WIND_BEND_DEG = 90.0f;
 // which needs RAMP >= 1.607 * SPREAD to stay under 15 deg. Both ramps satisfy
 // it with margin - see the numbers in the README. Shorten either and the front
 // turns into a visible step down the wall instead of a bend passing through.
-// The push runs left to right and the release runs RIGHT TO LEFT, so the
-// cycle has to contain both sweeps: RISE + 2x SPREAD + FALL. Each column's
-// hold is what falls out of that - the left edge, pushed first and released
-// last, holds for 2x SPREAD; the right edge, pushed last and released first,
-// holds for nothing. That difference IS the gust running across and back.
-static const double WIND_RISE_S = 3.75;    // out to the far end
-static const double WIND_FALL_S = 3.75;    // and back again
-static const double WIND_SPREAD_S = 1.5;   // one sweep across the wall
-static const double WIND_CYCLE_S =
-    WIND_RISE_S + 2.0 * WIND_SPREAD_S + WIND_FALL_S;
+// A crest that runs to the right, turns round at the wall and runs back at the
+// same speed, over and over.
+//
+// The crest is a POSITION, not an event: WIND_SWEEP_S is how long it takes to
+// cross the wall, and it bounces between column 0 and column 7 like a triangle
+// wave. Each column leans by how close the crest is to it. That is what makes
+// the return start at the right - the crest is already there when it turns, so
+// it comes straight back rather than fading out and re-forming at the far end.
+//
+// WIND_CREST_COLS is how many columns the crest spans, and it is pinned by the
+// 15 deg-per-column rule rather than chosen: a raised-cosine crest of width W
+// puts neighbours at most BEND * (pi/2) / W apart. So the swing and the width
+// go together - 90 deg needs 10 columns (wider than the wall, nothing ever
+// looks flat), 60 deg needs 7, 45 deg needs 5. Changing one without the other
+// either breaks the 15 deg rule or wastes the wall.
+static const double WIND_SWEEP_S = 3.0;      // one crossing of the wall
+static const float WIND_CREST_COLS = 7.0f;   // how wide the crest is
+static const double WIND_CYCLE_S = 2.0 * WIND_SWEEP_S;  // there and back
+
+// Raised cosine: 1 at the crest, easing to 0 a full width away.
+static inline float wind_crest(float dist_cols) {
+  float x = dist_cols / WIND_CREST_COLS;
+  if (x >= 1.0f)
+    return 0.0f;
+  return 0.5f * (1.0f + cosf((float) M_PI * x));
+}
 
 void LvglClock::tick_rotate_(double t) {
   float ang = (float) fmod(t * 45.0 * this->mode_speed_, 360.0);
@@ -691,6 +737,99 @@ void LvglClock::tick_love_(double t) {
     this->cc_dirty_ = true;
 }
 
+void LvglClock::adopt_temperature(int celsius) {
+  if (celsius == this->adopted_temp_)
+    return;
+  this->adopted_temp_ = celsius;
+  if (this->mode_ == CC_MODE_TEMP)
+    this->cc_dirty_ = true;  // the face is showing it, so redraw
+}
+
+// A local sensor wins over the bus: a node with its own sensor is showing its
+// own room, and that is more useful than the master's. Everything else falls
+// back to whatever came down the wire.
+int LvglClock::temperature_value() const {
+#ifdef USE_SENSOR
+  if (this->temp_sensor_ != nullptr && this->temp_sensor_->has_state() &&
+      !std::isnan(this->temp_sensor_->state))
+    return (int) lroundf(this->temp_sensor_->state);
+#endif
+  return this->adopted_temp_;
+}
+
+bool LvglClock::temperature_ready_() const { return this->temperature_value() != TEMP_NONE; }
+
+// A temperature, held: two digits, a degree sign and a C across the four digit
+// positions. Like tick_love_() this is a pose rather than an animation, so the
+// ordinary mode-entry blend sweeps it in and the settle sweeps it out, and the
+// canvas is only marked dirty when a digit actually changes - which for a
+// temperature is rarely.
+void LvglClock::tick_temp_(double t) {
+  (void) t;
+
+  // A new reading while the face is up must not snap the digits from one
+  // number to the next - that is the same teleport the choreographies are not
+  // allowed. So:
+  //   - mid-sweep (a blend is running), the new value waits its turn;
+  //   - otherwise it is taken, and the hands SWEEP to it on the ordinary
+  //     mode-entry blend, staggered left to right like every other change.
+  if (this->blend_state_ == BLEND_NONE) {
+    int latest = this->temperature_value();
+    if (latest != this->shown_temp_) {
+      for (int i = 0; i < NUM_HANDS; i++)
+        this->blend_off_[i] = this->cur_[i];  // where the hands are now
+      this->shown_temp_ = latest;
+      this->blend_state_ = BLEND_PENDING;     // measured on the next frame
+    }
+  }
+
+  int v = this->shown_temp_;
+  bool neg = false;
+  if (v == TEMP_NONE)
+    v = 0;  // only reachable if driven by an action rather than the cycle
+  if (v < 0) {
+    neg = true;
+    v = -v;
+  }
+  if (v > 99)
+    v = 99;  // two digits is all there is room for
+
+  // [tens or sign] [units] [degree] [C]. Below 10 the first position is blank,
+  // or a minus when it is needed - so "-5" and "21" both sit where you expect.
+  int glyph[NUM_DIGITS];
+  bool is_digit[NUM_DIGITS] = {true, true, false, false};
+  if (neg) {
+    glyph[0] = TG_MINUS;
+    is_digit[0] = false;
+    glyph[1] = (v > 9) ? 9 : v;
+  } else if (v >= 10) {
+    glyph[0] = v / 10;
+    glyph[1] = v % 10;
+  } else {
+    glyph[0] = TG_BLANK;
+    is_digit[0] = false;
+    glyph[1] = v;
+  }
+  glyph[2] = TG_DEGREE;
+  glyph[3] = TG_C;
+
+  bool changed = false;
+  for (int d = 0; d < NUM_DIGITS; d++) {
+    const float(*src)[2] = is_digit[d] ? FONT[glyph[d]] : TEMP_GLYPHS[glyph[d]];
+    for (int c = 0; c < CLOCKS_PER_DIGIT; c++) {
+      for (int hnd = 0; hnd < 2; hnd++) {
+        int i = (d * CLOCKS_PER_DIGIT + c) * 2 + hnd;
+        if (this->cur_[i] != src[c][hnd]) {
+          this->cur_[i] = src[c][hnd];
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed)
+    this->cc_dirty_ = true;
+}
+
 // A gust bending a stalk, left to right.
 //
 // Read a wall COLUMN top to bottom and the three clocks form one continuous
@@ -730,30 +869,15 @@ void LvglClock::tick_wind_(double t) {
     int col, row;
     wall_pos_(c, col, row);
 
-    // The gust bends the wall over left to right, then RELEASES it right to
-    // left - so the near edge for the return is the far edge of the push. Each
-    // column therefore has two separate start times, mirrored about the middle
-    // of the cycle, rather than one lag applied to both halves.
-    double lag = (double) col / (WALL_COLS - 1) * WIND_SPREAD_S;
-    double rise_at = lag;                                          // left first
-    double fall_at = WIND_RISE_S + 2.0 * WIND_SPREAD_S - lag;      // right first
-
+    // Where the crest is right now: 0 at the left edge, WALL_COLS-1 at the
+    // right, bouncing between the two at a constant speed.
     double u = fmod(ts, WIND_CYCLE_S);
     if (u < 0)
       u += WIND_CYCLE_S;
+    double f = u / WIND_SWEEP_S;                       // 0..2 across there-and-back
+    double crest = (f < 1.0 ? f : 2.0 - f) * (WALL_COLS - 1);
 
-    float lean;
-    if (u < rise_at) {
-      lean = 0.0f;  // the gust has not reached this column yet
-    } else if (u < rise_at + WIND_RISE_S) {
-      lean = WIND_BEND_DEG * ease((float) ((u - rise_at) / WIND_RISE_S));
-    } else if (u < fall_at) {
-      lean = WIND_BEND_DEG;  // held over while the gust runs on past
-    } else if (u < fall_at + WIND_FALL_S) {
-      lean = WIND_BEND_DEG * (1.0f - ease((float) ((u - fall_at) / WIND_FALL_S)));
-    } else {
-      lean = 0.0f;  // released, back to rest
-    }
+    float lean = WIND_BEND_DEG * wind_crest((float) fabs((double) col - crest));
     lean *= SENSE[row];
 
     for (int hnd = 0; hnd < 2; hnd++) {
@@ -826,6 +950,8 @@ void LvglClock::apply_mode_(ClockMode m) {
     this->anim_stagger_ms_ = COLUMN_STAGGER_MS;
     this->settle_from_ = from;  // keep it running underneath the settle
   }
+  if (m == CC_MODE_TEMP)
+    this->shown_temp_ = this->temperature_value();
   if (is_idle_animation_(m)) {
     // Restart the choreography's own clock, so it always begins at its rest
     // pose and its first frame is the left edge. Without this, a mode entered
@@ -958,7 +1084,20 @@ void LvglClock::update_mode_cycle_() {
   if (want) {
     // Walked in order rather than picked at random, so the sequence is what
     // the config says and a repeated entry simply comes round more often.
-    ClockMode m = this->cycle_modes_[slot % this->cycle_modes_.size()];
+    // `temp` is stepped over when there is no sensor or it has not published
+    // yet - showing a blank face for 35 s would be worse than not showing it.
+    const size_t n = this->cycle_modes_.size();
+    ClockMode m = this->mode_;
+    bool picked = false;
+    for (size_t k = 0; k < n && !picked; k++) {
+      ClockMode cand = this->cycle_modes_[(slot + k) % n];
+      if (cand == CC_MODE_TEMP && !this->temperature_ready_())
+        continue;
+      m = cand;
+      picked = true;
+    }
+    if (!picked)
+      return;  // nothing showable in the list right now - stay on the time
     // Phase the choreography from the window's own start rather than from the
     // epoch, so it opens at its rest position and - because every cycle length
     // divides the window - closes back on one instead of being cut mid-turn.
@@ -1039,6 +1178,10 @@ void LvglClock::loop() {
         break;
       case CC_MODE_LOVE:
         this->tick_love_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_TEMP:
+        this->tick_temp_(choreo_t);
         this->blend_into_mode_();
         break;
       case CC_MODE_DEMO:

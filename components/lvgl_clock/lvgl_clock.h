@@ -5,6 +5,9 @@
 #include "esphome/core/color.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/lvgl/lvgl_esphome.h"
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
 
 #include <vector>
 
@@ -93,8 +96,11 @@ enum ClockMode {
   CC_MODE_WIND,
   // Spells LOVE across the four digit positions and holds it.
   CC_MODE_LOVE,
+  // Shows a temperature as two digits plus a degree sign and a C. Needs a
+  // sensor; without one it is skipped rather than shown blank.
+  CC_MODE_TEMP,
   // Keep last: the sync platform validates incoming modes against this.
-  CC_MODE_LAST = CC_MODE_LOVE,
+  CC_MODE_LAST = CC_MODE_TEMP,
 };
 
 // Mode name for logs. The wire format is an integer, and "mode 5" in a log is
@@ -118,6 +124,8 @@ inline const char *clock_mode_name(ClockMode m) {
       return "wind";
     case CC_MODE_LOVE:
       return "love";
+    case CC_MODE_TEMP:
+      return "temp";
   }
   return "unknown";
 }
@@ -136,6 +144,10 @@ enum MovementMode {
   CC_MOVE_COUNTER,
   CC_MOVE_LONG,
 };
+
+// "no temperature" - outside any plausible reading, and what goes on the wire
+// when the master has no sensor or it has not published yet.
+static const int TEMP_NONE = -1000;
 
 static const int NUM_DIGITS = 4;
 static const int CLOCKS_PER_DIGIT = 6;
@@ -237,6 +249,20 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // until the time is valid.
   void set_cycle_interval(uint32_t interval_s) { this->cycle_interval_s_ = interval_s; }
   void add_cycle_mode(ClockMode m) { this->cycle_modes_.push_back(m); }
+#ifdef USE_SENSOR
+  // Source for `mode: temp`. Optional: with no sensor - or before it has
+  // published a reading - the temp mode is skipped in the cycle rather than
+  // shown as blanks, so a wall never sits on an empty face waiting for data.
+  void set_temperature_sensor(sensor::Sensor *s) { this->temp_sensor_ = s; }
+#endif
+  // A temperature handed in from outside - the UART sync platform pushes the
+  // master's reading here on every node, so slaves show `temp` without a
+  // sensor of their own. TEMP_NONE clears it.
+  void adopt_temperature(int celsius);
+  // What `temp` would draw right now, or TEMP_NONE. The sync platform reads
+  // this to decide what to broadcast.
+  int temperature_value() const;
+  bool temperature_ready_() const;
   // Marks this widget as taking its mode off the bus instead of choosing one.
   //
   // Exactly ONE node on a wall may pick, and the rest must be told, or the
@@ -434,6 +460,7 @@ class LvglClock : public Component, public lvgl::LvCompound {
   void tick_spiral_(double t);
   void tick_wind_(double t);
   void tick_love_(double t);
+  void tick_temp_(double t);
   // The animation time base: seconds, monotonic, smooth, and phase-aligned
   // with every other node on the wall.
   //
@@ -479,7 +506,8 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // True for the choreographies, i.e. the modes that drive cur_[] directly.
   static bool is_idle_animation_(ClockMode m) {
     return m == CC_MODE_ROTATE_LEFT || m == CC_MODE_FLYING_BIRDS || m == CC_MODE_WAVE ||
-           m == CC_MODE_SPIRAL || m == CC_MODE_WIND || m == CC_MODE_LOVE;
+           m == CC_MODE_SPIRAL || m == CC_MODE_WIND || m == CC_MODE_LOVE ||
+           m == CC_MODE_TEMP;
   }
   // Starts/ends the choreography window. Called every loop.
   void update_mode_cycle_();
@@ -610,6 +638,14 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // the wall winds down out of the movement instead of freezing and then
   // sweeping. settle_prev_ tracks the animation frame to frame so the delta
   // can follow it without ever having to re-pick a direction mid-fade.
+#ifdef USE_SENSOR
+  sensor::Sensor *temp_sensor_{nullptr};
+#endif
+  int adopted_temp_{TEMP_NONE};
+  // The value currently DRAWN, which is not always the latest one: a reading
+  // that lands mid-sweep is held back until the hands have arrived, so the
+  // face never jumps from one number to another. See tick_temp_().
+  int shown_temp_{TEMP_NONE};
   ClockMode settle_from_{CC_MODE_TIME};
   float settle_delta_[NUM_HANDS];
   float settle_prev_[NUM_HANDS];

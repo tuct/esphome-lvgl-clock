@@ -57,6 +57,9 @@ time:
     uart_id: sync_bus
     lvgl_clock_id: [dc_a, dc_b]
     broadcast_interval: 1s
+    # The wall's temperature source, for `mode: temp`. Master only - the
+    # reading rides along in the sync packet to every other board.
+    temperature_sensor_id: room_temp
 
 interval:
   # Boot phases: spin while connecting, birds while waiting for NTP, then the
@@ -94,3 +97,22 @@ interval:
                         - lvgl_clock.flying_birds: dc_a
                       else:
                         - lvgl_clock.rotate_left: dc_a
+
+# Stand-in temperature for `mode: temp` until a real sensor is wired up. It
+# walks 18->24 C and back so the digits actually change while you watch. Swap
+# the platform for a real one (dht, bme280, homeassistant, ...) and keep the id.
+#
+# MASTER ONLY, on purpose: the reading travels in the sync packet, so every
+# other board shows this number without a sensor of its own. Eight sensors
+# would just be eight opinions about the same room.
+sensor:
+  - platform: template
+    id: room_temp
+    name: "Room Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    update_interval: 10s
+    lambda: |-
+      static int step = 0;
+      step = (step + 1) % 14;
+      return 18.0f + (step < 7 ? step : 14 - step);

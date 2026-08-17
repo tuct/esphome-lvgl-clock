@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import automation
-from esphome.components import time
+from esphome.components import sensor, time
 from esphome.components.lvgl import defines as df
 from esphome.components.lvgl.defines import CONF_MAIN, literal
 from esphome.components.lvgl.lv_validation import lv_font
@@ -94,6 +94,7 @@ MODES = {
     "spiral": ClockMode.CC_MODE_SPIRAL,
     "wind": ClockMode.CC_MODE_WIND,
     "love": ClockMode.CC_MODE_LOVE,
+    "temp": ClockMode.CC_MODE_TEMP,
 }
 
 # The choreographies `cycle_modes:` may step through - the idle animations only.
@@ -149,6 +150,7 @@ CONF_DEMO_INTERVAL = "demo_interval"
 CONF_DEMO_STEP = "demo_step"
 CONF_STARTUP_ALIGN = "startup_align"
 CONF_SYNC_DOT = "sync_dot"
+CONF_TEMPERATURE_SENSOR_ID = "temperature_sensor_id"
 CONF_CYCLE_MODES = "cycle_modes"
 CONF_INTERVAL = "interval"
 CONF_MODES = "modes"
@@ -223,6 +225,18 @@ _CYCLE_MODES_SCHEMA = cv.Schema(
 )
 
 
+def _validate_temp_sensor(config):
+    """`temp` needs a temperature from somewhere.
+
+    Two places can supply it: `temperature_sensor_id` on this widget, or the
+    UART sync platform, which carries the master's reading to every board. This
+    validator can only see the first, so it cannot demand one - a wall gets its
+    temperature over the bus and has no local sensor by design. If neither is
+    present the mode is simply skipped at runtime.
+    """
+    return config
+
+
 def _partial_schema(value):
     """`partial:` selects which slice of the 24-clock grid this widget draws.
 
@@ -283,6 +297,10 @@ CLOCKCLOCK24_SCHEMA = cv.Schema(
         # platform (a master, or any standalone clock) count as synced and never
         # show it.
         cv.Optional(CONF_SYNC_DOT, default=False): cv.boolean,
+        # Source for `mode: temp`. Required as soon as `temp` is used anywhere
+        # in this widget - ESPHome will not guess which sensor you meant, and a
+        # temperature face with no temperature is worse than no face.
+        cv.Optional(CONF_TEMPERATURE_SENSOR_ID): cv.use_id(sensor.Sensor),
         # Periodic break-out into a random choreography - see above.
         cv.Optional(CONF_CYCLE_MODES): _CYCLE_MODES_SCHEMA,
         # Render only part of the grid, filling the widget - for building a
@@ -345,6 +363,9 @@ DIGITAL_SCHEMA = cv.Schema(
         cv.Optional(CONF_OFF_COLOR): cv.use_id(ColorStruct),
     }
 )
+
+# `temp` is only usable with a sensor behind it - see the validator.
+CLOCKCLOCK24_SCHEMA = cv.All(CLOCKCLOCK24_SCHEMA, _validate_temp_sensor)
 
 # big HH:MM digits drawn on the reference 6x24 grid of small 7-segment displays
 SEG_MATRIX_SCHEMA = cv.Schema(
@@ -573,6 +594,8 @@ class LvglClockWidgetType(WidgetType):
             lv_add(w.var.set_demo_step(c[CONF_DEMO_STEP]))
             lv_add(w.var.set_startup_align(c[CONF_STARTUP_ALIGN].total_milliseconds))
             lv_add(w.var.set_sync_dot(c[CONF_SYNC_DOT]))
+            if (tid := c.get(CONF_TEMPERATURE_SENSOR_ID)) is not None:
+                lv_add(w.var.set_temperature_sensor(await cg.get_variable(tid)))
             if CONF_CYCLE_MODES in c:
                 rnd = c[CONF_CYCLE_MODES]
                 lv_add(w.var.set_cycle_interval(rnd[CONF_INTERVAL].total_seconds))
@@ -660,3 +683,4 @@ _wave = _register_mode_action("lvgl_clock.wave", MODES["wave"])
 _spiral = _register_mode_action("lvgl_clock.spiral", MODES["spiral"])
 _wind = _register_mode_action("lvgl_clock.wind", MODES["wind"])
 _love = _register_mode_action("lvgl_clock.love", MODES["love"])
+_temp = _register_mode_action("lvgl_clock.temp", MODES["temp"])

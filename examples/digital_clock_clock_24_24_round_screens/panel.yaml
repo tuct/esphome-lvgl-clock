@@ -44,18 +44,19 @@ lvgl:
               mode: clock
               index: ${clock_index}
             movement: opposite     # opposite | clockwise | counter | long
-            transition_length: 4s
+            transition_length: 5s
             # No `mode:` here on purpose. It would only describe the first
             # second of this panel's life - board_a.yaml's interval takes over
             # on the master, and the sync packet takes over on every slave. The
             # wall's mode is owned by the master at runtime, so setting it per
             # panel at compile time is a value that is always about to be
             # overwritten. The default (time) is the right thing to start on.
-            # Idle-animation speed, x1.0 = the base rates. Halved here: a real
-            # ClockClock's hands move deliberately, and at x1.0 the wall reads
-            # as frantic. Must be the SAME on every board - it scales the time
-            # base, so two boards on different values fall out of phase.
-            mode_speed: 0.5
+            # Idle-animation speed, x1.0 = the base rates. The base rates are
+            # themselves unhurried now - a wave revolution takes 15.3 s - so
+            # this no longer needs to hold anything back. Must be the SAME on
+            # every board: it scales the time base, so two boards on different
+            # values fall out of phase rather than just out of step.
+            mode_speed: 1
             # Step through these choreographies, one per minute, each running
             # from :10 to :45 and then back to the time. The list is walked in
             # order and wraps; repeat an entry to show it more often. Only the
@@ -65,9 +66,15 @@ lvgl:
               interval: 1min   # cadence only - the 35s window at :10 is fixed
               modes:
                 - birds
+                - temp
                 - wave
+                - temp
                 - spiral
+                - temp
                 - wind
+                - temp
+                - love
+                - temp
             # Every hand straight up for the first 10 s: proves each panel is
             # alive and mounted the right way up, and the first sweep then
             # starts from the same position on every node.

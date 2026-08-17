@@ -10,6 +10,9 @@
 #include "esphome/core/component.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/uart/uart.h"
+#ifdef USE_SENSOR
+#include "esphome/components/sensor/sensor.h"
+#endif
 #include "lvgl_clock.h"
 
 #include <vector>
@@ -23,9 +26,14 @@ namespace lvgl_clock {
 //
 // Master (`broadcast_interval:` set) sends, every interval:
 //
-//     CC24 <epoch> <ms> <mode> <demo_min>\n
+//     CC24 <epoch> <ms> <mode> <demo_min> <temp_c>\n
 //
 // Slave (no `broadcast_interval:`) parses that and sets its system clock.
+//
+// `<temp_c>` is the master's temperature in whole degrees, or -1000 for "no
+// reading". Only the master has a sensor - the whole wall shows one number, so
+// putting a sensor on every board would be 8 sensors disagreeing about the same
+// room. A slave with no sensor of its own draws whatever arrives here.
 //
 // `<epoch> == 0` means "no time yet, but here is the mode": the master keeps
 // broadcasting from boot, so the whole wall shares its spin/birds animation
@@ -49,6 +57,11 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   float get_setup_priority() const override { return setup_priority::DATA; }
 
   void set_broadcast(bool on) { this->broadcast_ = on; }
+#ifdef USE_SENSOR
+  // Master only: the temperature that goes out with the time, so `mode: temp`
+  // shows the same reading on every board without any of them having a sensor.
+  void set_temperature_sensor(sensor::Sensor *s) { this->temp_sensor_ = s; }
+#endif
   // Optional: the widgets whose idle animation mode travels with the time, so
   // the whole wall spins/flies/shows time together. A node driving more than
   // one panel adds one per widget - a slave has no other way to move them,
@@ -95,6 +108,12 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   // Slave only: last mode taken off the wire, so a change is logged once
   // rather than on every packet. -1 = nothing received yet.
   int last_rx_mode_{-1};
+#ifdef USE_SENSOR
+  sensor::Sensor *temp_sensor_{nullptr};
+#endif
+  // Last temperature put on / taken off the wire, for the mode-change trigger
+  // and to avoid re-pushing an unchanged value.
+  int last_temp_{TEMP_NONE};
 };
 
 }  // namespace lvgl_clock

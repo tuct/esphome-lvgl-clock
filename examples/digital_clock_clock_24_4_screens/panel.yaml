@@ -59,10 +59,15 @@ lvgl:
               interval: 1min   # cadence only - the 35s window at :10 is fixed
               modes:
 #                - birds
-#                - love
-                - wave
-                - spiral
+#                - temp
+#                - wave
+#                - temp
+#                - spiral
+                - temp
                 - wind
+#                - temp
+#                - love
+#                - temp
             spacing: 0.0           # gap between HH and MM, in clock-widths
             padding_inside: 3      # px gutter between neighbouring clocks
             # Every hand straight up for the first 10 s: proves each panel is
