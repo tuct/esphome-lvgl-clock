@@ -80,8 +80,10 @@ enum TempGlyph { TG_DEGREE = 0, TG_C, TG_MINUS, TG_BLANK };
 static const float TEMP_GLYPHS[4][CLOCKS_PER_DIGIT][2] = {
     // degree: a closed ring in the upper two thirds
     {{90, 180}, {180, 270}, {0, 90}, {0, 270}, {PARK, PARK}, {PARK, PARK}},
-    // C: an O with the right side left open
-    {{90, 180}, {270, 270}, {0, 180}, {PARK, PARK}, {0, 90}, {270, 270}},
+    // c: a SMALL c, raised to sit with the degree sign - top two rows only,
+    // bottom row unlit. A full-height C next to a raised ring reads as two
+    // unrelated glyphs rather than one "degrees C".
+    {{90, 180}, {270, 270}, {0, 90}, {270, 270}, {PARK, PARK}, {PARK, PARK}},
     // minus: one bar on the middle row
     {{PARK, PARK}, {PARK, PARK}, {90, 90}, {270, 270}, {PARK, PARK}, {PARK, PARK}},
     // blank
@@ -552,13 +554,9 @@ static const double SPIRAL_RAMP_S = 1.0;      // spin-up, per clock
 //
 // Sums to 15 s, so a whole number of gusts fills the window at both
 // mode_speed 1.0 and 0.5.
-// How far the two free ends SWING: 10:30 -> 12:30 at the top and 4:30 -> 6:30
+// How far the two free ends SWING: 10:30 -> 1:30 at the top and 4:30 -> 7:30
 // at the bottom. The MIDDLE row never moves.
-//
-// 60 rather than 90 buys a visibly localised crest. The two are coupled by the
-// 15 deg-per-column rule - see WIND_CREST_COLS - and at 90 the narrowest crest
-// that fits is 10 columns, wider than the wall, so nothing ever looked flat.
-static const float WIND_BEND_DEG = 60.0f;
+static const float WIND_BEND_DEG = 90.0f;
 // RISE and FALL are floored by a hard constraint: NEIGHBOURING COLUMNS MUST
 // NEVER DIFFER BY MORE THAN 15 DEG. A column lags its left neighbour by
 // SPREAD/(WALL_COLS-1), and an eased ramp peaks at 1.875x its average rate, so
@@ -566,32 +564,30 @@ static const float WIND_BEND_DEG = 60.0f;
 // which needs RAMP >= 1.607 * SPREAD to stay under 15 deg. Both ramps satisfy
 // it with margin - see the numbers in the README. Shorten either and the front
 // turns into a visible step down the wall instead of a bend passing through.
-// A crest that runs to the right, turns round at the wall and runs back at the
-// same speed, over and over.
+// A gust that pushes the wall over left to right, HOLDS it there, then lets it
+// go right to left.
 //
-// The crest is a POSITION, not an event: WIND_SWEEP_S is how long it takes to
-// cross the wall, and it bounces between column 0 and column 7 like a triangle
-// wave. Each column leans by how close the crest is to it. That is what makes
-// the return start at the right - the crest is already there when it turns, so
-// it comes straight back rather than fading out and re-forming at the far end.
+// Not a travelling crest. A crest is a moving band, so everything behind it
+// springs back as it passes - the left edge would be upright again long before
+// the wave reached the right. Here a column stays over once pushed, and only
+// releases when the wind lets go, which is what makes the wall look held
+// against a gust rather than rippled by one.
 //
-// WIND_CREST_COLS is how many columns the crest spans, and it is pinned by the
-// 15 deg-per-column rule rather than chosen: a raised-cosine crest of width W
-// puts neighbours at most BEND * (pi/2) / W apart. So the swing and the width
-// go together - 90 deg needs 10 columns (wider than the wall, nothing ever
-// looks flat), 60 deg needs 7, 45 deg needs 5. Changing one without the other
-// either breaks the 15 deg rule or wastes the wall.
-static const double WIND_SWEEP_S = 3.0;      // one crossing of the wall
-static const float WIND_CREST_COLS = 7.0f;   // how wide the crest is
-static const double WIND_CYCLE_S = 2.0 * WIND_SWEEP_S;  // there and back
-
-// Raised cosine: 1 at the crest, easing to 0 a full width away.
-static inline float wind_crest(float dist_cols) {
-  float x = dist_cols / WIND_CREST_COLS;
-  if (x >= 1.0f)
-    return 0.0f;
-  return 0.5f * (1.0f + cosf((float) M_PI * x));
-}
+// Each column has two start times. The push reaches it after `lag`, so the
+// left goes first; the release reaches it after the MIRRORED lag, so the right
+// goes first. Its hold is whatever sits between them - 2x SPREAD + HOLD at the
+// left edge, HOLD at the right - and that difference is the gust crossing and
+// draining back.
+//
+// SPREAD is bounded by the 15 deg-per-column rule: an eased ramp peaks at
+// 1.875x its average, so gap = 1.875 * BEND / RAMP * SPREAD / (WALL_COLS - 1),
+// which needs RAMP >= 1.6 * SPREAD at 90 deg of swing.
+static const double WIND_RISE_S = 2.5;    // a column being pushed over
+static const double WIND_HOLD_S = 3.0;    // held there while the gust blows
+static const double WIND_FALL_S = 2.5;    // and let go
+static const double WIND_SPREAD_S = 1.0;  // one sweep across the wall
+static const double WIND_CYCLE_S =
+    WIND_RISE_S + 2.0 * WIND_SPREAD_S + WIND_HOLD_S + WIND_FALL_S;
 
 void LvglClock::tick_rotate_(double t) {
   float ang = (float) fmod(t * 45.0 * this->mode_speed_, 360.0);
@@ -869,15 +865,26 @@ void LvglClock::tick_wind_(double t) {
     int col, row;
     wall_pos_(c, col, row);
 
-    // Where the crest is right now: 0 at the left edge, WALL_COLS-1 at the
-    // right, bouncing between the two at a constant speed.
     double u = fmod(ts, WIND_CYCLE_S);
     if (u < 0)
       u += WIND_CYCLE_S;
-    double f = u / WIND_SWEEP_S;                       // 0..2 across there-and-back
-    double crest = (f < 1.0 ? f : 2.0 - f) * (WALL_COLS - 1);
 
-    float lean = WIND_BEND_DEG * wind_crest((float) fabs((double) col - crest));
+    double lag = (double) col / (WALL_COLS - 1) * WIND_SPREAD_S;
+    double push_at = lag;                                                   // left first
+    double release_at = WIND_RISE_S + WIND_HOLD_S + 2.0 * WIND_SPREAD_S - lag;  // right first
+
+    float lean;
+    if (u < push_at) {
+      lean = 0.0f;  // the gust has not reached this column yet
+    } else if (u < push_at + WIND_RISE_S) {
+      lean = WIND_BEND_DEG * ease((float) ((u - push_at) / WIND_RISE_S));
+    } else if (u < release_at) {
+      lean = WIND_BEND_DEG;  // held over - the wind is still blowing
+    } else if (u < release_at + WIND_FALL_S) {
+      lean = WIND_BEND_DEG * (1.0f - ease((float) ((u - release_at) / WIND_FALL_S)));
+    } else {
+      lean = 0.0f;  // let go, back upright
+    }
     lean *= SENSE[row];
 
     for (int hnd = 0; hnd < 2; hnd++) {
