@@ -58,16 +58,13 @@ lvgl:
             cycle_modes:
               interval: 1min   # cadence only - the 35s window at :10 is fixed
               modes:
-#                - birds
-#                - temp
-#                - wave
-#                - temp
-#                - spiral
+                - birds
                 - temp
+                - wave
+                - spiral
                 - wind
-#                - temp
-#                - love
-#                - temp
+                - love
+
             spacing: 0.0           # gap between HH and MM, in clock-widths
             padding_inside: 3      # px gutter between neighbouring clocks
             # Every hand straight up for the first 10 s: proves each panel is

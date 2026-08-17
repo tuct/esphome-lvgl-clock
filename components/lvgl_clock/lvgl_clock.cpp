@@ -80,10 +80,10 @@ enum TempGlyph { TG_DEGREE = 0, TG_C, TG_MINUS, TG_BLANK };
 static const float TEMP_GLYPHS[4][CLOCKS_PER_DIGIT][2] = {
     // degree: a closed ring in the upper two thirds
     {{90, 180}, {180, 270}, {0, 90}, {0, 270}, {PARK, PARK}, {PARK, PARK}},
-    // c: a SMALL c, raised to sit with the degree sign - top two rows only,
-    // bottom row unlit. A full-height C next to a raised ring reads as two
-    // unrelated glyphs rather than one "degrees C".
-    {{90, 180}, {270, 270}, {0, 90}, {270, 270}, {PARK, PARK}, {PARK, PARK}},
+    // c: a SMALL c on the BOTTOM two rows, so it shares a baseline with the
+    // digits while the degree sign stays raised above it - which is how "21 °C"
+    // is set. Top row unlit.
+    {{PARK, PARK}, {PARK, PARK}, {90, 180}, {270, 270}, {0, 90}, {270, 270}},
     // minus: one bar on the middle row
     {{PARK, PARK}, {PARK, PARK}, {90, 90}, {270, 270}, {PARK, PARK}, {PARK, PARK}},
     // blank
@@ -577,15 +577,30 @@ static const float WIND_BEND_DEG = 90.0f;
 // left goes first; the release reaches it after the MIRRORED lag, so the right
 // goes first. Its hold is whatever sits between them - 2x SPREAD + HOLD at the
 // left edge, HOLD at the right - and that difference is the gust crossing and
-// draining back.
+// draining back. With HOLD at 0 the right edge turns round the moment it is
+// fully over, and only the left is held, waiting for the release to reach it.
 //
 // SPREAD is bounded by the 15 deg-per-column rule: an eased ramp peaks at
 // 1.875x its average, so gap = 1.875 * BEND / RAMP * SPREAD / (WALL_COLS - 1),
 // which needs RAMP >= 1.6 * SPREAD at 90 deg of swing.
-static const double WIND_RISE_S = 2.5;    // a column being pushed over
-static const double WIND_HOLD_S = 3.0;    // held there while the gust blows
-static const double WIND_FALL_S = 2.5;    // and let go
-static const double WIND_SPREAD_S = 1.0;  // one sweep across the wall
+static const double WIND_RISE_S = 2.0;    // a column being pushed over
+// 0 = the release follows the push with no dwell at all: the right edge, which
+// the push reaches last, starts back the instant it arrives. Raise it and the
+// whole wall stands over for that long before anything is let go.
+static const double WIND_HOLD_S = 0.0;
+static const double WIND_FALL_S = 2.0;    // and let go
+// One sweep across the wall - and the whole trade in this mode.
+//
+// How obviously the wall moves left to right is SPREAD / RISE: at 1.2 / 2.0 the
+// left edge is fully over while the right has barely started. The right edge's
+// wait is 2 x SPREAD, so a shorter sweep buys a shorter wait and costs exactly
+// that legibility - at 0.5 the wall looks like it moves all at once.
+//
+// The 15 deg-per-column rule sets the floor on RISE (>= 1.6 x SPREAD), and at
+// that floor the wait is always ~38% of the cycle whatever the numbers, so the
+// only way to shrink the wait without flattening the sweep is to shorten the
+// ramps - which is why RISE and FALL came down to 2.0 alongside this.
+static const double WIND_SPREAD_S = 1.2;
 static const double WIND_CYCLE_S =
     WIND_RISE_S + 2.0 * WIND_SPREAD_S + WIND_HOLD_S + WIND_FALL_S;
 
@@ -854,9 +869,16 @@ void LvglClock::tick_wind_(double t) {
                                    {0.0f, 180.0f},     // middle: 12:00 + 6:00
                                    {0.0f, 135.0f}};    // bottom: 12:00 + 4:30
   static const int MOVES[3] = {0, -1, 1};  // which hand the gust bends, -1 = none
-  // Both free ends turn CLOCKWISE by the same amount, which is physically
-  // opposite: the top tip sweeps right across the top (10:30 -> 1:30) while the
-  // bottom tip sweeps left across the bottom (4:30 -> 7:30). The stalk shears.
+  // The bottom runs the top's sweep BACKWARDS. Both tips turn clockwise, but
+  // because one points up and the other down that sends them opposite ways
+  // across the wall - the top tip sweeps right over the top while the bottom
+  // tip sweeps left underneath - so the column shears about its middle rather
+  // than leaning as one piece.
+  //   top:    10:30 -> 1:30  (over the top, left to right)
+  //   bottom:  4:30 -> 7:30  (underneath, right to left)
+  // At rest that gives the shallow diagonal the column is meant to have:
+  // leaning in at the top left, vertical through the middle, out at the
+  // bottom right.
   static const float SENSE[3] = {1.0f, 0.0f, 1.0f};
 
   double ts = t * this->mode_speed_;
@@ -869,9 +891,21 @@ void LvglClock::tick_wind_(double t) {
     if (u < 0)
       u += WIND_CYCLE_S;
 
+    // The bottom row reads the wall from the other end, in BOTH phases - it is
+    // the top's mirror in time as well as in swing direction:
+    //
+    //   top     push  left  -> right     release  right -> left
+    //   bottom  push  right -> left      release  left  -> right
+    //
+    // So each phase runs one way along the top and the other way along the
+    // bottom, and the wall looks like it is being twisted rather than like two
+    // rows doing unrelated work. Mirroring only one of the two phases leaves
+    // the other starting from the wrong end.
     double lag = (double) col / (WALL_COLS - 1) * WIND_SPREAD_S;
-    double push_at = lag;                                                   // left first
-    double release_at = WIND_RISE_S + WIND_HOLD_S + 2.0 * WIND_SPREAD_S - lag;  // right first
+    double eff = (row == WALL_ROWS - 1) ? (WIND_SPREAD_S - lag) : lag;
+
+    double push_at = eff;
+    double release_at = WIND_RISE_S + WIND_HOLD_S + 2.0 * WIND_SPREAD_S - eff;
 
     float lean;
     if (u < push_at) {
