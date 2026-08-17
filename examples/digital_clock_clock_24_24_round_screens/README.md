@@ -576,9 +576,10 @@ https://amzn.to/4xJpK79
 
 
 Seeed XIAO ESP32-S3
-https://amzn.to/4zm4KF8 €15.16
-or at aliexpress, same for 3! from original seeed store!
-=> about € 120 or 50 on aliexpress
+https://amzn.to/4zm4KF8 €15.16 / per unit
+or at www.seeedstudio.com, same for 3! from original seeed store!
+=> about € 120 or 50 on seeed store
+https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32S3-3PCS-p-5919.html about €15 for 3 + shipping 
 
 MP1584EN module
 https://amzn.to/4g2qbn7 €10 for 10 pack
