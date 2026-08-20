@@ -63,6 +63,8 @@ lvgl:
                 - wave
                 - spiral
                 - wind
+                - rotating_maze
+                - zipper
                 - love
 
             spacing: 0.0           # gap between HH and MM, in clock-widths

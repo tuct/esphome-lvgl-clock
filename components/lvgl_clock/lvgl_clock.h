@@ -99,8 +99,15 @@ enum ClockMode {
   // Shows a temperature as two digits plus a degree sign and a C. Needs a
   // sensor; without one it is skipped rather than shown blank.
   CC_MODE_TEMP,
+  // A chevron per clock alternating by column, turning with the direction
+  // alternating by row - and easing almost to a stop each time the wall lands
+  // on an aligned figure, so it reads as a maze forming and dissolving.
+  CC_MODE_ROTATING_MAZE,
+  // A field of diagonals with a front running across it left to right, which
+  // unzips each column into a pair of mirrored chevrons and does it up behind.
+  CC_MODE_ZIPPER,
   // Keep last: the sync platform validates incoming modes against this.
-  CC_MODE_LAST = CC_MODE_TEMP,
+  CC_MODE_LAST = CC_MODE_ZIPPER,
 };
 
 // Mode name for logs. The wire format is an integer, and "mode 5" in a log is
@@ -126,6 +133,10 @@ inline const char *clock_mode_name(ClockMode m) {
       return "love";
     case CC_MODE_TEMP:
       return "temp";
+    case CC_MODE_ROTATING_MAZE:
+      return "rotating_maze";
+    case CC_MODE_ZIPPER:
+      return "zipper";
   }
   return "unknown";
 }
@@ -461,6 +472,8 @@ class LvglClock : public Component, public lvgl::LvCompound {
   void tick_wind_(double t);
   void tick_love_(double t);
   void tick_temp_(double t);
+  void tick_rotating_maze_(double t);
+  void tick_zipper_(double t);
   // The animation time base: seconds, monotonic, smooth, and phase-aligned
   // with every other node on the wall.
   //
@@ -507,7 +520,7 @@ class LvglClock : public Component, public lvgl::LvCompound {
   static bool is_idle_animation_(ClockMode m) {
     return m == CC_MODE_ROTATE_LEFT || m == CC_MODE_FLYING_BIRDS || m == CC_MODE_WAVE ||
            m == CC_MODE_SPIRAL || m == CC_MODE_WIND || m == CC_MODE_LOVE ||
-           m == CC_MODE_TEMP;
+           m == CC_MODE_TEMP || m == CC_MODE_ROTATING_MAZE || m == CC_MODE_ZIPPER;
   }
   // Starts/ends the choreography window. Called every loop.
   void update_mode_cycle_();

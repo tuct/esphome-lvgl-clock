@@ -736,7 +736,7 @@ time platform, so they are also the worked examples of `partial:`,
 
 | Build | Boards | What it is |
 | --- | --- | --- |
-| [`digital_clock_clock_24_24_round_screens/`](./examples/digital_clock_clock_24_24_round_screens) | 8 × XIAO ESP32-S3, 3 round panels each | The full 24-clock wall — one board per physical column. Master/slave roles, per-board configs `board_a.yaml`…`board_h.yaml`, wiring, pin budget, power and bring-up order in its own [README](./examples/digital_clock_clock_24_24_round_screens/README.md). |
+| [`digital_clock_clock_24_24_round_screens/`](./examples/digital_clock_clock_24_24_round_screens) | 8 × XIAO ESP32-S3, 3 round panels each | The full 24-clock wall — one board per physical column, **built and running** ([photos](./examples/digital_clock_clock_24_24_round_screens/README.md#first-prototype)). Master/slave roles, per-board configs `board_a.yaml`…`board_h.yaml`, wiring, pin budget, power and bring-up order in its own [README](./examples/digital_clock_clock_24_24_round_screens/README.md). |
 | [`digital_clock_clock_24_4_screens/`](./examples/digital_clock_clock_24_4_screens) | 2 × XIAO ESP32-S3, 2 panels each | **The cheap way in** — a sixth of the displays. Each panel renders a whole **digit** (`partial: {mode: digit}`) rather than one mini-clock, so four screens make `HH:MM`. The trade is a visible gap at every digit boundary, where the original is one continuous 8×3 grid. |
 
 The examples read Wi-Fi/API/OTA credentials from `secrets.yaml` — copy

@@ -2,7 +2,7 @@
 # GC9A01A panels on one XIAO ESP32-S3, each rendering ONE of the wall's 24
 # mini-clocks. Eight of these boards make the full ClockClock 24.
 #
-# board_a.yaml (the master) and common_slave.yaml add the `uart:` and the
+# board_c.yaml (the master) and common_slave.yaml add the `uart:` and the
 # `time:` source, since those are what differ between the roles. The eight
 # board_*.yaml files override the three clock indices.
 
@@ -52,7 +52,6 @@ substitutions:
 spi:
   clk_pin: ${clk_pin}
   mosi_pin: ${mosi_pin}
-  miso_pin: ${miso_pin}
 
 display:
   - platform: mipi_spi
@@ -96,19 +95,6 @@ display:
     dimensions:
       width: 240
       height: 240
-
-# All three backlights on one LEDC channel, so the board dims as a unit.
-output:
-  - platform: ledc
-    pin: ${backlight_pin}
-    id: backlight_output
-
-light:
-  - platform: monochromatic
-    output: backlight_output
-    id: backlight
-    name: "Backlight"
-    restore_mode: ALWAYS_ON
 
 # One LVGL instance per display, each with one mini-clock. `direct_draw` skips
 # the widget's own canvas and renders straight into LVGL's buffer, which is

@@ -323,7 +323,12 @@ associating to Wi-Fi both land at switch-on.
 - 2 × Custom PCB (see [`PCB/`](./PCB))
 - 2 × Seeed XIAO ESP32-S3
 - 2 × MP1584EN module
-- 4 × 2.4″/2.8″ 320×240 ILI9342 SPI panel, 14-pin header
+- 4 × 4.0″ 320×240 ILI9342 SPI panel, 14-pin header
 - 2 × JST-XH 2-pin, 4 × JST-XH 3-pin (+ matching housings)
 - 2 × 2.54 mm jumper for U3
 - Two wires (D1 + GND) between the boards
+
+ILI9488 Touch SN Display SPI, LCD Drawing Modules, 4 in TFT LCD Display Module ILI9488 Driver 14 Pin 480 x 320 HD SPI Serial Touch SN Display Module
+https://amzn.to/4zu2V9h
+about €30 per panel on amazon
+about 1/2 or lower on aliexpress, i used touch versions, but no touch should also work

@@ -12,7 +12,8 @@ substitutions:
   # SPI bus - shared by all three panels.
   clk_pin: "D8"     # GPIO7,  SCK
   mosi_pin: "D10"   # GPIO9,  MOSI
-  miso_pin: "D9"    # GPIO8,  MISO
+                    # No MISO: these panels are write-only, and D9 is a
+                    # no-connect on the PCB.
   # Shared by all three panels: one DC line and one reset line, so each panel
   # only costs a chip select.
   dc_pin: "D3"      # GPIO4
@@ -22,9 +23,9 @@ substitutions:
   cs_pin_a: "D4"    # GPIO5
   cs_pin_b: "D5"    # GPIO6
   cs_pin_c: "D6"    # GPIO43 - also the ROM's UART0 TX, see the note below
-  # Shared backlight for all three panels.
-  backlight_pin: "D7"   # GPIO44 - also the ROM's UART0 RX (an input at boot,
-                        #          so nothing contends with it)
+  # No backlight pin: BLK is tied to +3.3 V on the PCB and D7 is a
+  # no-connect, so the panels are always at full brightness. D7/GPIO44 is
+  # free (it is the ROM's UART0 RX, an input at boot, so nothing contends).
   # Sync bus. D1/GPIO2 is clean: no strapping function, no ROM UART.
   #
   # That matters more than it looks. D6/GPIO43 is the ROM's UART0 TX, and every
@@ -52,7 +53,7 @@ psram:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
-# No `wifi:` / `api:` / `ota:` here on purpose - they live in board_a.yaml.
+# No `wifi:` / `api:` / `ota:` here on purpose - they live in board_c.yaml (the master).
 # A slave takes the time off the UART and needs no network at all, which is the
 # whole point of the bus: one board holds the Wi-Fi credentials and the SNTP
 # dependency, the other seven are self-contained. The cost is that slaves are

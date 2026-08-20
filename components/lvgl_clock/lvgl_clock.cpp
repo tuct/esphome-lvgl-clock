@@ -298,6 +298,12 @@ void LvglClock::tick_choreography_(ClockMode m, double t) {
     case CC_MODE_TEMP:
       this->tick_temp_(t);
       break;
+    case CC_MODE_ROTATING_MAZE:
+      this->tick_rotating_maze_(t);
+      break;
+    case CC_MODE_ZIPPER:
+      this->tick_zipper_(t);
+      break;
     default:
       break;
   }
@@ -937,6 +943,253 @@ void LvglClock::tick_wind_(double t) {
         a += lean;
       this->cur_[c * 2 + hnd] = wrap360(a);
     }
+  }
+  this->cc_dirty_ = true;
+}
+
+// `rotating_maze` timing, at mode_speed 1.0 - see tick_rotating_maze_().
+//
+// One revolution AVERAGE: the turn is not constant, it eases almost to a stop
+// each time the wall lands on an aligned figure. With MAZE_STOPS = 4 that is a
+// dwell every 5 s, and a whole revolution inside a 35 s cycle_modes window.
+static const double MAZE_TURN_S = 20.0;
+// Slow-downs per revolution, and which angle they land on.
+//
+// The hands sit on a 45 deg multiple every 45 deg of turn, which gives EIGHT
+// aligned figures per revolution in two families:
+//
+//   theta = 0, 90, 180, 270    every hand on a diagonal - < > chevrons
+//   theta = 45, 135, 225, 315  every hand on an axis - right-angle corners
+//
+// Only the first family gets a dwell, which is also the pose the mode starts
+// from. Dwelling on both (STOPS 8) put a pause every 45 deg and made neither
+// stand out. MAZE_PHASE_DEG 45 picks the other family instead.
+static const int MAZE_STOPS = 4;
+static const float MAZE_PHASE_DEG = 0.0f;
+// How NARROW the ease-off is: the exponent in the closed-form integral below.
+// 1 is a plain cosine, which sits near its minimum for most of the cycle and
+// reads as STOPPING on each figure; higher concentrates the slowing into a
+// short patch centred on the figure.
+static const int MAZE_SHARP = 8;
+// The slowest rate as a fraction of the average - the knob worth having,
+// because it is what you judge by eye. Any value in (0,1] is safe: the depth
+// derived from it comes out <= 1, so the rate can never go negative and the
+// hands can never run backwards.
+static const double MAZE_FLOOR = 0.40;
+
+// The rate profile is a narrow BUMP, not a cosine:
+//
+//   rate(x) = (1 - d G(x)) / (1 - d mean(G))     d from MAZE_FLOOR
+//   G(x)    = ((1 + cos x)/2) ^ MAZE_SHARP       x = N (u - phi)
+//
+// Done as a TIME WARP rather than a velocity: integrating a speed that depends
+// on angle is an ODE, but bending the phase is closed-form. G has an exact
+// integral at any integer exponent, which is what keeps this off a lookup
+// table:
+//
+//   G(x)  = cos^2k(x/2) = 4^-k [ C(2k,k) + 2 SUM_j C(2k,k-j) cos(jx) ]
+//   IG(x) = 4^-k [ C(2k,k) x + 2 SUM_j C(2k,k-j) sin(jx)/j ]
+//
+// so theta(u) = (u - (d/N) IG(N(u - phi))) / (1 - d mean(G)), and
+// theta(u + 2pi) = theta(u) + 2pi exactly - one whole turn per turn, however
+// the rate is shaped.
+struct MazeWarp {
+  double coef[MAZE_SHARP * 2 + 1];  // one row of Pascal's triangle, C(2k, .)
+  double scale;                     // 4^-k
+  double mean;                      // mean of G
+  double dwell;                     // depth that lands the floor on MAZE_FLOOR
+  double u0;                        // the phase at which the turn is zero
+
+  MazeWarp() {
+    const int k = MAZE_SHARP;
+    this->coef[0] = 1.0;
+    for (int i = 1; i <= 2 * k; i++) {
+      this->coef[i] = 1.0;
+      for (int j = i - 1; j > 0; j--)
+        this->coef[j] = this->coef[j] + this->coef[j - 1];
+    }
+    this->scale = pow(4.0, -k);
+    this->mean = this->coef[k] * this->scale;
+    // floor = (1 - d) / (1 - d mean)  =>  d = (1 - floor) / (1 - floor mean)
+    this->dwell = (1.0 - MAZE_FLOOR) / (1.0 - MAZE_FLOOR * this->mean);
+    // A non-zero MAZE_PHASE_DEG shifts the whole curve, so raw(0) is no longer
+    // 0 and the mode would START part-way round instead of on its base pose.
+    // Solve for the u where the turn is zero and begin there: that fixes the
+    // start WITHOUT moving the dwells, which subtracting raw(0) would have
+    // done. Bisection is fine - raw() is monotonic by construction.
+    double lo = -M_PI, hi = M_PI;
+    for (int i = 0; i < 100; i++) {
+      double m = 0.5 * (lo + hi);
+      if (this->raw(m) < 0.0)
+        lo = m;
+      else
+        hi = m;
+    }
+    this->u0 = 0.5 * (lo + hi);
+  }
+
+  // The warped angle for a linear phase u, in radians. Monotonic in u.
+  double raw(double u) const {
+    const int k = MAZE_SHARP;
+    // MAZE_PHASE_DEG is the OUTPUT angle a dwell should land on, but the offset
+    // applies to the LINEAR phase - which the normalisation below divides by
+    // (1 - dwell*mean). So scale it first, or asking for 45 deg silently gives
+    // 51.6. Invisible while the constant is 0, since 0 scales to 0.
+    double phi = MAZE_PHASE_DEG * M_PI / 180.0 * (1.0 - this->dwell * this->mean);
+    double x = MAZE_STOPS * (u - phi);
+    double ig = this->coef[k] * x;
+    for (int j = 1; j <= k; j++)
+      ig += 2.0 * this->coef[k - j] * sin(j * x) / j;
+    ig *= this->scale;
+    return (u - (this->dwell / MAZE_STOPS) * ig) / (1.0 - this->dwell * this->mean);
+  }
+};
+
+// Built once, on first use. Costs a Pascal row and 100 bisection steps.
+static const MazeWarp &maze_warp() {
+  static const MazeWarp w;
+  return w;
+}
+
+// A chevron per clock, alternating by COLUMN - even columns point down (a
+// peak), odd columns point up (a trough) - turning at one rate, with the
+// DIRECTION alternating by ROW: rows 0 and 2 clockwise, row 1 counter-
+// clockwise.
+//
+// Both hands of a clock always turn the SAME way, so the pair stays a rigid
+// 90 deg chevron and simply rotates - it never opens or shuts in place.
+//
+// At t = 0 the wall is a clean interlocking pattern; the counter-rotating rows
+// then shear past each other and it opens and closes through it, which is where
+// the name comes from. The rate is not constant - see MAZE_FLOOR.
+void LvglClock::tick_rotating_maze_(double t) {
+  const MazeWarp &w = maze_warp();
+  const double TAU = 2.0 * M_PI;
+
+  // Wrap the LINEAR phase, not the output: raw(u + TAU) = raw(u) + TAU, so the
+  // seam is a whole turn and the hand does not step.
+  double u = fmod(t * this->mode_speed_ / MAZE_TURN_S * TAU, TAU);
+  if (u < 0)
+    u += TAU;
+  float turned = (float) (w.raw(u + w.u0) * 180.0 / M_PI);
+
+  for (int c = 0; c < NUM_CLOCKS; c++) {
+    int col, row;
+    wall_pos_(c, col, row);
+    // +1 = clockwise, -1 = counter-clockwise.
+    float sense = (row & 1) ? -1.0f : 1.0f;
+    // even column: 135/225, a chevron pointing DOWN
+    // odd  column:  45/315, a chevron pointing UP
+    float b0 = (col & 1) ? 45.0f : 135.0f;
+    float b1 = (col & 1) ? 315.0f : 225.0f;
+    this->cur_[c * 2 + 0] = wrap360(b0 + sense * turned);
+    this->cur_[c * 2 + 1] = wrap360(b1 + sense * turned);
+  }
+  this->cc_dirty_ = true;
+}
+
+// `zipper` timing, at mode_speed 1.0 - see tick_zipper_().
+//
+// One hand's 90 deg swing. The eased swing peaks at 1.875x its average rate,
+// mode_speed scales that, and the settle back to the time adds its own sweep on
+// top - so going much below this makes a hand move faster in a frame than an
+// analogue clock plausibly can.
+static const double ZIP_FLIP_S = 0.9;
+// Hand 1 behind hand 0. MUST EXCEED ZIP_FLIP_S: the difference is how long the
+// chevron is held fully open. Overlap the two and they are never more than
+// about 40 deg apart, which is a slightly bent line rather than a chevron.
+static const double ZIP_HAND_LAG_S = 1.2;
+// How fast the front crosses the wall. A column is in motion for
+// HAND_LAG + FLIP = 2.1 s, so the number of columns moving AT ONCE is that
+// divided by this - about four here, with the rest of the wall sitting still on
+// the diagonal, which is what makes it read as something passing through.
+static const double ZIP_COL_LAG_S = 0.5;
+// Gap between one front and the next, in columns. At 9 a front finishes
+// crossing before the next sets off, so there is only ever ONE on the wall; at
+// 2 there is always a front with the next already coming in behind it.
+static const double ZIP_GAP_COLS = 9.0;
+static const double ZIP_HOLD_S = ZIP_HAND_LAG_S + ZIP_GAP_COLS * ZIP_COL_LAG_S;
+static const double ZIP_CYCLE_S = ZIP_FLIP_S + ZIP_HOLD_S;
+// How far a resting column leans before the next pass reaches it, applied to
+// BOTH hands so the stroke stays straight and simply tilts - the wall is never
+// quite frozen between passes. It ramps across the whole rest, so this also
+// sets the speed: the rate is ZIP_DRIFT_DEG / ZIP_HOLD_S.
+static const float ZIP_DRIFT_DEG = 30.0f;
+
+// How far through its 90 deg swing one hand is at time x, 0..1.
+//
+// It SWINGS OUT AND BACK rather than accumulating: pass 0 goes 0 -> 1, pass 1
+// goes 1 -> 0, and so on. Accumulating instead leaves every pass starting from
+// a base 90 deg further along, so the second pass opens its chevrons downwards
+// instead of sideways. Swinging keeps the figure in the same > < family.
+static float zip_swing(double x) {
+  // Nothing has happened yet. Without this the columns ahead of the front -
+  // whose lag puts them at negative x - would already be part-way through a
+  // swing at t = 0, and the wall would not start as one clean field of
+  // diagonals for the mode-entry blend to fade into.
+  if (x <= 0.0)
+    return 0.0f;
+  double n = floor(x / ZIP_CYCLE_S);
+  double u = x - n * ZIP_CYCLE_S;
+  float p = (u < ZIP_FLIP_S) ? ease((float) (u / ZIP_FLIP_S)) : 1.0f;
+  return (((long) n) & 1) ? 1.0f - p : p;
+}
+
+// The slow lean of a resting column, in degrees. Holds still while the column
+// is mid-swing, then ramps across the rest that follows - out after an even
+// pass, back after an odd one. Continuous at every seam, and it never leaves
+// [0, ZIP_DRIFT_DEG], so the field sways rather than creeping away.
+static float zip_drift(double x) {
+  if (x <= 0.0)
+    return 0.0f;
+  double n = floor(x / ZIP_CYCLE_S);
+  double u = x - n * ZIP_CYCLE_S;
+  bool odd = (((long) n) & 1) != 0;
+  float from = odd ? ZIP_DRIFT_DEG : 0.0f;
+  float to = odd ? 0.0f : ZIP_DRIFT_DEG;
+  if (u < ZIP_FLIP_S)
+    return from;  // mid-swing: hold
+  return from + (to - from) * (float) ((u - ZIP_FLIP_S) / ZIP_HOLD_S);
+}
+
+// A front running across a field of diagonals, unzipping each column into a
+// pair of mirrored chevrons and doing it up behind.
+//
+//   at rest   \  \  \  \  \  \  \  \.
+//   the front \  \  \  >  <  /  /  /      the two hands have come apart
+//   after     /  /  /  /  /  /  /  /      ...and closed again on the far side
+//
+// The rest pose puts the hands 180 deg apart (315 and 135), so a column at rest
+// is ONE straight stroke. A pass swings each hand 90 deg, turning \ into /, and
+// the next pass swings it back.
+//
+// FOUR things make the figure and it does not appear without any one of them:
+// the swing is 90 deg not 180 (at 180 the opening rotates all the way round and
+// no shape lasts); hand 1 starts only after hand 0 has finished; the swing goes
+// out and back rather than round; and WHICH hand leads alternates by column, so
+// the front is > < > < rather than eight identical chevrons.
+//
+// Every row does the same thing, so the figure repeats down each column and the
+// front is one vertical band. Two variations were tried and are wrong: giving
+// the middle row the opposite travel direction puts the rows at different
+// columns, so the wall stops reading as a single front; giving it the opposite
+// swing sign turns its chevrons through a right angle, which breaks the column
+// into three unrelated marks.
+void LvglClock::tick_zipper_(double t) {
+  double ts = t * this->mode_speed_;
+  for (int c = 0; c < NUM_CLOCKS; c++) {
+    int col, row;
+    wall_pos_(c, col, row);
+    double x = ts - (double) col * ZIP_COL_LAG_S;  // the front, travelling right
+    // Whichever hand goes first drags the stroke open towards its own side.
+    bool lead = (col & 1) == 0;
+    double x0 = lead ? x : x - ZIP_HAND_LAG_S;
+    double x1 = lead ? x - ZIP_HAND_LAG_S : x;
+    // The drift is read at the column's own x and added to BOTH hands, so a
+    // resting stroke leans without bending.
+    float drift = zip_drift(x);
+    this->cur_[c * 2 + 0] = wrap360(315.0f + 90.0f * zip_swing(x0) + drift);
+    this->cur_[c * 2 + 1] = wrap360(135.0f + 90.0f * zip_swing(x1) + drift);
   }
   this->cc_dirty_ = true;
 }
