@@ -14,6 +14,12 @@ digits** — four screens cannot be one continuous field of clocks the way the
 original is. See [Four screens vs
 twenty-four](#four-screens-vs-twenty-four).
 
+<img src="./images/PXL_20260820_181724499~2.jpg" width="70%">
+
+*A printed mock-up of the layout: four blocks of six, with a gap at every
+digit boundary. That gap is the trade this build makes — see [Four screens vs
+twenty-four](#four-screens-vs-twenty-four).*
+
 > **Status:** builds and validates. Untested on hardware.
 
 This is the small sibling of

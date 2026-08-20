@@ -22,7 +22,7 @@ The next step was four displays, one per two columns, in a 3D-printed frame.
 Quite nice — but the gap between the digits ends up wider than the gaps between
 the clocks inside a digit:
 
-<img src="./images/cc_24_c.jpg" width="70%">
+<img src="../digital_clock_clock_24_4_screens/images/cc_24_c.jpg" width="70%">
 
 → [the four-screen version](../digital_clock_clock_24_4_screens)
 
@@ -33,7 +33,7 @@ clock. It worked.
 
 24 round displays forming one [ClockClock 24](https://clockclock.com/), driven
 by **8 XIAO ESP32-S3 boards with 3 panels each**. Every board runs the same
-[`lvgl_clock`](../../README.md) `clockclock24` engine, and each panel renders
+[`lvgl_clock`](../components/lvgl_clock/README.md) `clockclock24` engine, and each panel renders
 **one** of the 24 mini-clocks (`partial: 0…23`), so the digit sweeps,
 `movement:` directions and idle animations stay identical across the wall by
 construction.
@@ -45,9 +45,8 @@ a ninth box.
 > **Status:** running on hardware — 12 of the 24 clocks built. See
 > [First prototype](#first-prototype).
 >
-> **Cost:** roughly **€206–€376** for the full 24-clock wall, about
-> **€9–16 per clock** — the spread is almost entirely where you buy the XIAOs. See
-> [BOM and cost](#bom-and-cost).
+> **Cost:** roughly **€206–€376** for the full 24-clock wall — the spread is
+> almost entirely where you buy the XIAOs. See [BOM and cost](#bom-and-cost).
 
 ## First prototype
 
@@ -95,7 +94,7 @@ a quote.
 | 100 µF electrolytic — `C5` | 0&nbsp;–&nbsp;8 | 0.2&nbsp;–&nbsp;0.4 | 0&nbsp;–&nbsp;3 | **Optional**, recommended. Bulk on the 3.3 V rail; through-hole, 6.3 mm |
 | 5 V 2 A USB supply | 1 | 0&nbsp;–&nbsp;15 | 0&nbsp;–&nbsp;15 | one for the whole wall; €0 if you have one |
 | [3D-printed frame](#3d-printed-frame) | 1 | 5&nbsp;–&nbsp;15 | 5&nbsp;–&nbsp;15 | filament only, if you print it yourself |
-| **Total** | | | **€&nbsp;206&nbsp;–&nbsp;376** | **≈ €&nbsp;9–16 per clock** |
+| **Total** | | | **€&nbsp;206&nbsp;–&nbsp;376** | |
 
 **Where the money goes.** The panels are the floor — €118 of it, and there is
 no way around 24 displays. The one real decision is the **XIAO**: buying

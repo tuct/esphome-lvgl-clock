@@ -1,8 +1,8 @@
 # Hardware photos
 
-Product shots referenced by the *Examples and hardware* tables in the top-level
-[`README.md`](../../README.md). Keep the filenames below — the README links to
-them by path. Roughly square crops around 300–600 px wide render best; they're
+Product shots referenced by the *Examples and hardware* tables in the component
+documentation, [`components/lvgl_clock/README.md`](../../components/lvgl_clock/README.md).
+Keep the filenames below — that README links to them by path. Roughly square crops around 300–600 px wide render best; they're
 displayed at 150 px.
 
 | File | Shows |
