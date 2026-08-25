@@ -1,0 +1,12 @@
+// Variable overrides, imported by just-the-docs before its own styles.
+//
+// The default content column is 800px. Several pages here carry wide fixed
+// artefacts that read badly when wrapped or scrolled: the eight-board wiring
+// chain is 65 characters, the wall grid is 60, and the BOM table has six
+// columns with prose in the last one. 62rem gives all of them room on a laptop
+// while staying inside a comfortable measure for the prose.
+$content-width: 62rem;
+
+// A slightly larger mono size: these code blocks are diagrams as often as they
+// are code, and the default 0.6875rem makes the ASCII art hard to read.
+$mono-font-size: 0.75rem;

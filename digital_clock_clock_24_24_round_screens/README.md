@@ -54,7 +54,7 @@ a ninth box.
 > [First full build](#first-full-build), and [`PROTOTYPE.md`](./PROTOTYPE.md)
 > for how it got there.
 >
-> **Cost:** roughly **€207–€376** for the full 24-clock wall — the spread is
+> **Cost:** roughly **€207–€374** for the full 24-clock wall — the spread is
 > almost entirely where you buy the XIAOs. See [BOM and cost](#bom-and-cost).
 
 ## First full build
@@ -83,7 +83,7 @@ All eight carriers then push onto those headers and chain together — see
 ### BOM and cost
 
 Everything for the full eight-board, 24-clock wall. Quantities come from the
-[netlist](./PCB/Netlist_Schematic3_2026-08-19.tel); prices are what the parts
+[netlist](./PCB/Netlist_Schematic_24_screens_2026-08-25.tel); prices are what the parts
 cost when they were last checked, so treat them as a starting point rather than
 a quote.
 
@@ -91,19 +91,19 @@ a quote.
 | --- | ---: | ---: | ---: | --- |
 | 1.28″ 240×240 round GC9A01A panel | 25 | 4.7&nbsp;–&nbsp;5.6 | 118&nbsp;–&nbsp;140 | [5-pack, €23.49](https://amzn.to/4xJpK79) — 5 packs: 24 used, 1 spare |
 | Seeed XIAO ESP32-S3 | 8 | 5.6&nbsp;–&nbsp;15.2 | 45&nbsp;–&nbsp;122 | [3-pack ~€15 at Seeed](https://www.seeedstudio.com/Seeed-Studio-XIAO-ESP32S3-3PCS-p-5919.html) vs [€15.16 each on Amazon](https://amzn.to/4zm4KF8) |
-| Custom PCB — [gerbers](./PCB/Gerber_PCB3_2026-08-19.zip) | 8 | 2.5&nbsp;–&nbsp;3.8 | 20&nbsp;–&nbsp;30 | one fab order, 2-layer 34 × 131.6 mm |
+| Custom PCB — [gerbers](./PCB/Gerber_PCB3_2026-08-25.zip) | 8 | 2.5&nbsp;–&nbsp;3.8 | 20&nbsp;–&nbsp;30 | one fab order, 2-layer 34 × 131.6 mm |
 | MP1584EN buck module — `U7` | 2 | 1&nbsp;–&nbsp;5 | 2&nbsp;–&nbsp;10 | [10-pack, €10](https://amzn.to/4g2qbn7). **Not one per board** — see [How many regulators](#how-many-regulators-and-where) |
-| JST-XH 4-pin connector — `CN1`, `CN3` | 16 | 0.2&nbsp;–&nbsp;0.4 | 3&nbsp;–&nbsp;6 | chain in / chain out; sold in 20/50-packs |
+| JST-XH 4-pin connector — `CN1`, `CN2` | 16 | 0.2&nbsp;–&nbsp;0.4 | 3&nbsp;–&nbsp;6 | chain in / chain out; sold in 20/50-packs |
 | JST-XH 2-pin connector — `U8` | 0&nbsp;–&nbsp;1 | 0.2&nbsp;–&nbsp;0.4 | 0&nbsp;–&nbsp;1 | **Optional**, and only on the board you feed — skip it if you power the wall by plugging USB-C into that board's XIAO |
 | 4-way chain cable — housing, crimps, wire | 7 | 0.7&nbsp;–&nbsp;1.6 | 5&nbsp;–&nbsp;11 | one per hop between boards |
 | 8-pin female header 2.54 mm — `U3`/`U4`/`U5` | 24 | 0.2&nbsp;–&nbsp;0.4 | 5&nbsp;–&nbsp;10 | one per panel; or cut from 40-pin strips |
 | 7-pin female header 2.54 mm — `U6` | 16 | 0.2&nbsp;–&nbsp;0.4 | 3&nbsp;–&nbsp;6 | the XIAO socket, 2 × 7; also cut from strips |
 | 100 nF 0805 — `C1`–`C3` | 24 | <&nbsp;0.1 | 1&nbsp;–&nbsp;2 | **All 24 fitted** on the built wall. **The only SMD part** — sold in 100-packs |
-| 220 µF electrolytic — `C4`, `C6` | 0&nbsp;–&nbsp;16 | 0.1&nbsp;–&nbsp;0.3 | 0&nbsp;–&nbsp;5 | **Optional** — **none fitted** on the built wall. Bulk on the 5 V rail; through-hole, 6.3 mm |
+| 220 µF electrolytic — `C6` | 0&nbsp;–&nbsp;8 | 0.1&nbsp;–&nbsp;0.3 | 0&nbsp;–&nbsp;3 | **Optional** — **none fitted** on the built wall. Bulk on the 5 V rail; through-hole, 6.3 mm |
 | 100 µF electrolytic — `C5` | 1&nbsp;–&nbsp;8 | 0.2&nbsp;–&nbsp;0.4 | 0&nbsp;–&nbsp;3 | **One** was enough for the whole wall. Bulk on the 3.3 V rail; through-hole, 6.3 mm |
 | 5 V 2 A USB supply | 1 | 0&nbsp;–&nbsp;15 | 0&nbsp;–&nbsp;15 | one for the whole wall; €0 if you have one |
 | [3D-printed frame](#3d-printed-frame) | 1 | 5&nbsp;–&nbsp;15 | 5&nbsp;–&nbsp;15 | filament only, if you print it yourself |
-| **Total** | | | **€&nbsp;207&nbsp;–&nbsp;376** | |
+| **Total** | | | **€&nbsp;207&nbsp;–&nbsp;374** | |
 
 **Where the money goes.** The panels are the floor — €118 of it, and there is
 no way around 24 displays. The one real decision is the **XIAO**: buying
@@ -125,7 +125,7 @@ allows for:
   worth having — they sit right at the panels and cost almost nothing.
 - **One 100 µF** on the 3.3 V rail, for the whole wall rather than one per
   board.
-- **No 220 µF at all.** `C4` and `C6` are empty on every board.
+- **No 220 µF at all.** `C6` is empty on every board.
 
 That runs fine, so treat the `0` low bounds in the table as real rather than
 theoretical. The reasoning holds: bulk on the rails is there to stop 24
@@ -174,8 +174,8 @@ chain. Keep that board on the bench for the rest of the build.
 | 1 | `C1`–`C3`, 100 nF 0805 | Only if you are fitting them — see [the BOM](#bom-and-cost). SMD, so they go on while the board is still flat |
 | 2 | `U7`, the MP1584 module | Only the one or two boards that carry a regulator. It lies flat on its footprint and is soldered through its pads — poor-man's SMD, and much easier before the tall parts |
 | 3 | `U3`/`U4`/`U5`, `U6` | The three 8-pin panel headers and the 2 × 7 XIAO socket |
-| 4 | `CN1`, `CN3`, `U8` | The 4-pin chain connectors, plus the 2-pin power input if you are using one |
-| 5 | `C4`–`C6` | The electrolytics: tallest, so last. Watch polarity |
+| 4 | `CN1`, `CN2`, `U8` | The 4-pin chain connectors, plus the 2-pin power input if you are using one |
+| 5 | `C5`, `C6` | The electrolytics: tallest, so last. Watch polarity |
 
 **2. Set the MP1584 to 3.3 V — before any panel is plugged in.** These modules
 ship adjustable and usually well above 3.3 V. Power the board with the panel
@@ -224,7 +224,7 @@ should go dark. If they stay, the bus is not working — see
 [Debugging the bus](#debugging-the-bus). The listener also picks up the
 master's choreography, so the two boards animating in step is the second half
 of the proof. Walk that listener XIAO down the chain and repeat for every
-board, so each carrier's `CN1`/`CN3` is proven before anything goes into the
+board, so each carrier's `CN1`/`CN2` is proven before anything goes into the
 frame.
 
 **6. Wire the chain.** One 4-pin cable per hop, seven in total, fed in the
@@ -242,7 +242,7 @@ What to look for, in order:
   the time together. A column that lags or never arrives is a bus problem at
   that board's `CN1`.
 - **Every sync dot is dark.** One board still dotted means it is not hearing
-  the master — that hop's cable, or its `CN1`/`CN3` joints.
+  the master — that hop's cable, or its `CN1`/`CN2` joints.
 - **The time reads correctly.** A board plugged into the wrong column shows a
   scrambled digit, and that is a `clock_index_*` mistake in its YAML, not a
   wiring one.
@@ -302,7 +302,7 @@ fitted** for the whole wall — the other seven footprints are empty, exactly as
 
 ### Wiring
 
-One 4-way cable per hop, and that is the entire harness. `CN1` and `CN3` carry
+One 4-way cable per hop, and that is the entire harness. `CN1` and `CN2` carry
 the same four nets, so each board loops straight through to the next — power
 and the sync bus in one run:
 
@@ -318,7 +318,7 @@ and the sync bus in one run:
   +----o+-+o---o+-+o---o+-+o---o+-+o---o+-+o---o+-+o---o+-+o----+
    col 0   col 1   col 2   col 3   col 4   col 5   col 6   col 7
 
-   D = master (Wi-Fi), the MP1584, and 5 V in   o = CN1 / CN3, 4-pin XH
+   D = master (Wi-Fi), the MP1584, and 5 V in   o = CN1 / CN2, 4-pin XH
    C = a 2nd MP1584, only if you fit one        end boards use only one
 ```
 
@@ -615,21 +615,30 @@ the three panel headers, regulates the panel supply and passes the sync bus and
 5 V through to the next board. Design files are in [`PCB/`](./PCB) — **board
 revision v1.1**, **34 × 131.6 mm**, 2 layers.
 
-<img src="./PCB/3D_PCB3_2026-08-19.png" width="260" align="right">
+<img src="./PCB/3D_PCB3_2026-08-25.png" width="260" align="right">
 
 | File | What it is |
 | --- | --- |
-| [`3D_PCB3_2026-08-19.png`](./PCB/3D_PCB3_2026-08-19.png) | 3D render (right) |
-| [`SCH_Schematic3_2026-08-19.pdf`](./PCB/SCH_Schematic3_2026-08-19.pdf) | Schematic |
-| [`Gerber_PCB3_2026-08-19.zip`](./PCB/Gerber_PCB3_2026-08-19.zip) | Gerbers + drills, ready to upload |
-| [`Netlist_Schematic3_2026-08-19.tel`](./PCB/Netlist_Schematic3_2026-08-19.tel) | Netlist |
+| [`3D_PCB3_2026-08-25.png`](./PCB/3D_PCB3_2026-08-25.png) | 3D render (right) |
+| [`SCH_Schematic_24_screens_2026-08-25.pdf`](./PCB/SCH_Schematic_24_screens_2026-08-25.pdf) | Schematic |
+| [`SCH_Schematic_24_screens_1-P1_2026-08-25.png`](./PCB/SCH_Schematic_24_screens_1-P1_2026-08-25.png) | The same schematic as an image, for a quick look |
+| [`Gerber_PCB3_2026-08-25.zip`](./PCB/Gerber_PCB3_2026-08-25.zip) | Gerbers + drills, ready to upload |
+| [`Netlist_Schematic_24_screens_2026-08-25.tel`](./PCB/Netlist_Schematic_24_screens_2026-08-25.tel) | Netlist |
 
-> **v1.1, 2026-08-19.** The pass-through connectors are now **4-pin XH**
-> carrying `+3.3 V`, `GND`, `+5 V`, `UART` — the four wires the prototype was
-> already chaining by hand off a pair of 3-pin headers. The board also lost
-> 8 mm. Nothing on the XIAO moved, so the pin map and every config are
-> unchanged — and **v1.0 boards still work**, they just need the two-run wiring
-> in the [assembly photo](#hardware-assembly).
+> **v1.1, 2026-08-25.** The pass-through connectors are **4-pin XH** carrying
+> `+3.3 V`, `GND`, `+5 V`, `UART` — the four wires the prototype was already
+> chaining by hand off a pair of 3-pin headers — and the board lost 8 mm.
+>
+> This revision is otherwise a cleanup: the second bulk cap on the 5 V rail
+> (`C4`) is gone, since one is plenty for a board drawing 150 mA, and the
+> outgoing connector is now `CN2` rather than `CN3`. **Nothing on the XIAO
+> moved**, so the pin map and every config are unchanged.
+>
+> **v1.0 boards still work** — they just need the two-run wiring in the
+> [assembly photo](#hardware-assembly), because their pass-through is a pair of
+> 3-pin headers rather than one 4-pin.
+
+Superseded files are kept in [`PCB/old/`](./PCB/old).
 
 Upload the gerber zip as-is to JLCPCB or any EasyEDA-compatible fab — 2-layer,
 1.6 mm, no controlled impedance or other special process. The silkscreen has a
@@ -644,9 +653,9 @@ mis-indexed board is identifiable without reading its logs.
 | U3 / U4 / U5 | 8-pin female headers | Panels A / B / C |
 | U7 | MP1584EN module | 5 V → 3.3 V for the panels. **Not needed on every board** — see [How many regulators](#how-many-regulators-and-where) |
 | U8 | JST-XH 2-pin | 5 V power in |
-| CN1 / CN3 | JST-XH **4-pin** | The whole chain in and out: `+3.3 V`, `GND`, `+5 V`, `UART` |
+| CN1 / CN2 | JST-XH **4-pin** | The whole chain in and out: `+3.3 V`, `GND`, `+5 V`, `UART` |
 | C1–C3 | 100 nF 0805 | Decoupling, one per panel header |
-| C4, C6 | 220 µF | Bulk on the 5 V rail |
+| C6 | 220 µF | Bulk on the 5 V rail |
 | C5 | 100 µF | Bulk on the 3.3 V rail |
 
 #### Power topology
@@ -658,7 +667,7 @@ off the XIAO's regulator — three GC9A01As would be well past what it can
 supply. Because `VBUS` is on that same `+5 V` net, plugging USB-C into the XIAO
 feeds the board and everything chained to it, and `U8` need not be fitted.
 
-**CN1 and CN3 carry the same four nets** — `+3.3 V`, `GND`, `+5 V`, `UART` — so
+**CN1 and CN2 carry the same four nets** — `+3.3 V`, `GND`, `+5 V`, `UART` — so
 a board loops straight through to the next on a single 4-way cable, panel
 supply included. That is why most boards leave `U7` empty: see
 [Power](#power) for how many regulators the wall actually needs and where to

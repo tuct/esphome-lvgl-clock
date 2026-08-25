@@ -34,7 +34,7 @@ point.
 
 | | |
 | --- | --- |
-| **Cost** | **€207 – €376** for the whole wall |
+| **Cost** | **€207 – €374** for the whole wall |
 | **Size** | ≈ **27 × 13 cm**, **730 g** assembled — eight 34 × 131.6 mm carrier boards side by side |
 | **Effort** | A project. One custom PCB, 24 panels to mount, 8 boards to flash |
 | **Status** | **Running on hardware** — all eight boards built, the full 24-clock wall |
@@ -94,6 +94,7 @@ between the minutes — `rotate_left`, `flying_birds`, `wave`, `spiral`, `wind`,
 style, with the hardware tables.
 → [**`examples/`**](./examples) — ready-to-flash configs and the shared board
 and panel packages they include.
+→ [**Modes**](./modes.md) — every choreography, and two ways to make your own.
 → [**`tools/clockclock24-sim`**](./tools/clockclock24-sim) — the same engine in
 a browser. Design a choreography without a flash cycle, or draw a **motion
 pattern** in its editor, export it, and push it to a whole 24-screen wall by

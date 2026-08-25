@@ -1,0 +1,97 @@
+# GitHub Pages for esphome-lvgl-clock.
+#
+# Deliberately NO duplicated content: the site is built from the READMEs that
+# are already in the repo. Four plugins do the work, so there is nothing to
+# install by hand and nothing to keep in sync:
+#
+#   jekyll-readme-index           a folder's README.md becomes its index page,
+#                                 so links to a directory keep working
+#   jekyll-relative-links         rewrites [x](./foo/README.md) to the built URL
+#   jekyll-optional-front-matter  renders .md that has no YAML front matter
+#   jekyll-remote-theme           pulls just-the-docs, which is not one of the
+#                                 handful of themes Pages bundles
+#
+# Enable at Settings -> Pages -> Deploy from a branch -> main -> / (root).
+
+title: ESPHome LVGL Clock
+description: >-
+  A clock widget for ESPHome's LVGL, and a physical ClockClock 24 built out of
+  it - 24 round screens, eight boards, one wire.
+remote_theme: just-the-docs/just-the-docs
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-readme-index
+  - jekyll-relative-links
+  - jekyll-optional-front-matter
+  - jekyll-titles-from-headings
+
+relative_links:
+  enabled: true
+  collections: false
+
+# ---- just-the-docs --------------------------------------------------------
+# Search is the reason for this theme. There is a lot of specific fact buried in
+# long pages - MAZE_FLOOR, the D6 strapping-pin warning, the 0.01 V measurement,
+# pattern_delay - and no index anywhere.
+search_enabled: true
+search:
+  heading_level: 3
+  previews: 3
+  rel_url: true
+color_scheme: dark
+heading_anchors: true
+
+aux_links:
+  "View on GitHub":
+    - "https://github.com/tuct/esphome-lvgl-clock"
+aux_links_new_tab: true
+
+# ---- navigation -----------------------------------------------------------
+# just-the-docs normally wants `title` and `nav_order` in each page's front
+# matter. GitHub renders front matter as a table in its own Markdown view, which
+# would put an ugly block at the top of every README in the repo - so the nav is
+# supplied from here instead and the files stay clean.
+defaults:
+  # Every page gets the theme's layout. Without this the pages have front
+  # matter (supplied here) but no `layout`, and Jekyll renders them as bare
+  # HTML with no theme at all - the site would build and look broken.
+  - scope: { path: "" }
+    values: { layout: default }
+  - scope: { path: "README.md" }
+    values: { title: "Home", nav_order: 1 }
+  - scope: { path: "modes.md" }
+    values: { title: "Modes", nav_order: 2 }
+  - scope: { path: "digital_clock_clock_24_24_round_screens/README.md" }
+    values: { title: "Build: 24 round screens", nav_order: 3, has_children: true }
+  - scope: { path: "digital_clock_clock_24_24_round_screens/PROTOTYPE.md" }
+    values: { title: "First prototype", parent: "Build: 24 round screens", nav_order: 1 }
+  - scope: { path: "digital_clock_clock_24_4_screens/README.md" }
+    values: { title: "Build: 4 screens", nav_order: 4 }
+  - scope: { path: "components/lvgl_clock/README.md" }
+    values: { title: "The component", nav_order: 5 }
+  - scope: { path: "examples/README.md" }
+    values: { title: "Examples", nav_order: 6 }
+  - scope: { path: "tools/clockclock24-sim/README.md" }
+    values: { title: "Sandbox & pattern editor", nav_order: 7 }
+  - scope: { path: "tools/gifgen/README.md" }
+    values: { title: "gifgen", nav_order: 8 }
+  - scope: { path: "images/hw/README.md" }
+    values: { title: "Hardware photos", nav_order: 9 }
+
+# The sandbox is a static app and is copied through untouched: Jekyll only
+# processes files that HAVE front matter, and its .html and .js have none.
+#
+# tools/clockclock24-sim/ therefore contains both an index.html (the app) and a
+# README.md. jekyll-readme-index leaves a directory alone when it already has an
+# index, so the app wins the folder URL and its README lands at README.html.
+# That is the right way round - a link to the sandbox should run it.
+
+exclude:
+  - .esphome
+  - "**/.esphome"
+  - "**/__pycache__"
+  - "**/secrets.yaml"
+  - Gemfile
+  - Gemfile.lock
+  - vendor

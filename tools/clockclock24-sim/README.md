@@ -7,7 +7,11 @@ each, a two-minute build and a wall you have to walk over to — the loop is slo
 enough that a new mode takes an evening. Here it takes a reload.
 
 **Open [`index.html`](./index.html) in a browser.** No server, no build step, no
-dependencies.
+dependencies — it runs straight off the filesystem.
+
+It is also published with the project site, so it can be linked to and used
+without cloning anything — this folder's URL *is* the running app, and this
+README sits beside it at `README.html`.
 
 ```
 tools/clockclock24-sim/

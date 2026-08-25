@@ -1,0 +1,40 @@
+// Site-specific tweaks on top of just-the-docs.
+
+// Wide artefacts scroll inside their own box rather than pushing the page
+// sideways. Tables here can be six columns of BOM with a prose column at the
+// end, and the ASCII diagrams are fixed-width by nature - neither should ever
+// make the whole page scroll horizontally.
+.main-content {
+  pre, table {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  // Diagrams are drawn to a fixed column count, so wrapping them destroys the
+  // alignment that carries the meaning.
+  pre code {
+    white-space: pre;
+  }
+
+  // Photos of the wall are the point of several pages; let them use the full
+  // measure rather than sitting at their intrinsic size.
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+// The BOM and pin-budget tables are dense. A little more room per cell, and
+// numbers that line up column to column.
+.main-content table {
+  font-size: 0.8rem;
+
+  td, th {
+    padding: 0.4rem 0.6rem;
+  }
+
+  // Prices, quantities, degrees-per-frame - all read as columns of figures.
+  td {
+    font-variant-numeric: tabular-nums;
+  }
+}
