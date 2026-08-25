@@ -8,9 +8,22 @@ form the digits and spend the time in between doing something else entirely.
 
 *↑ The finished wall, running. [Watch it](https://www.youtube.com/watch?v=BnIoumtDO5s).*
 
-**[See it move in your browser →](https://tuct.github.io/esphome-lvgl-clock/)**
-— the project site runs the real firmware engine live, and its
-[sandbox](./tools/clockclock24-sim/) lets you draw your own patterns.
+> ### Draw your own patterns — in the browser, no code, no reflash
+>
+> **[The project site](https://tuct.github.io/esphome-lvgl-clock/)** runs the
+> real firmware engine live, and its
+> **[pattern editor](./tools/clockclock24-sim/)** is where new movement gets
+> made. Three steps:
+>
+> 1. **Pose the 24 clocks** — drag the hands, shift-click to do several at once.
+> 2. **Give each hand a motion** — a direction and a speed, either a number or
+>    *"the same as my neighbour, ± a bit"*, so a gradient across the wall is one
+>    value instead of eight.
+> 3. **Export**, and paste the one line of text into a field in Home Assistant.
+>
+> The master pushes it down the sync bus and **the whole wall is running it a
+> second later, with nothing reflashed** — not even the master. That is what the
+> single-master design is for.
 
 The original is a beautiful, expensive piece of kinetic art. This is the same
 idea built from **24 round LCD panels and eight £5 microcontrollers**, driven by
