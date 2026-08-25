@@ -6,7 +6,9 @@
 <div class="cc-demo">
   <canvas id="cc-demo-canvas" width="1280" height="480" aria-label="A ClockClock 24 wall running its choreographies"></canvas>
   <p class="cc-demo-caption">
-    <span id="cc-demo-mode">time</span> —
+    <label for="cc-demo-select">mode</label>
+    <select id="cc-demo-select" aria-label="Choose a mode"></select>
+    <span id="cc-demo-mode">time</span>
     <a href="{{ '/tools/clockclock24-sim/' | relative_url }}"><strong>open the sandbox &amp; pattern editor →</strong></a>
   </p>
 </div>
@@ -33,6 +35,35 @@
               "zipper", "mirror_wave", "time", "spiral", "love"];
   var HOLD_MS = 9000;
   var at = 0, nextAt = now + 4000;
+
+  // Build the picker from the engine's own mode list, so a mode added to the
+  // sandbox turns up here without anyone remembering to add it twice.
+  //
+  // `pattern` and `test` are left out: one needs the editor to have anything to
+  // draw, the other is a scratch bench.
+  var sel = document.getElementById("cc-demo-select");
+  var label = document.getElementById("cc-demo-mode");
+  var opt = document.createElement("option");
+  opt.value = "auto";
+  opt.textContent = "auto — showreel";
+  sel.appendChild(opt);
+  Object.keys(C.MODES).forEach(function (k) {
+    if (k === "pattern" || k === "test") return;
+    var o = document.createElement("option");
+    o.value = k;
+    o.textContent = C.MODES[k].label;
+    sel.appendChild(o);
+  });
+  sel.value = "auto";
+  sel.addEventListener("change", function () {
+    if (sel.value === "auto") {
+      // Pick up the reel from where it was rather than restarting it.
+      nextAt = performance.now();
+      return;
+    }
+    wall.setMode(sel.value, performance.now());
+    label.textContent = sel.value;
+  });
 
   function drawClock(cx, cy, r, a0, a1) {
     var w = Math.max(2, r / 8);
@@ -67,11 +98,12 @@
   function loop(t) {
     var dt = Math.min((t - last) / 1000, 0.1);   // a backgrounded tab must not leap
     last = t;
-    if (t >= nextAt) {
+    // Only the showreel advances on its own; a chosen mode stays chosen.
+    if (sel.value === "auto" && t >= nextAt) {
       at = (at + 1) % REEL.length;
       nextAt = t + HOLD_MS;
       wall.setMode(REEL[at], t);
-      document.getElementById("cc-demo-mode").textContent = REEL[at];
+      label.textContent = REEL[at];
     }
     wall.frame(t, dt);
     render();

@@ -61,9 +61,21 @@
 }
 
 .cc-demo-caption {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
   margin: 0.5rem 0 0;
   font-size: 0.8rem;
-  opacity: 0.85;
+  opacity: 0.9;
+
+  label { opacity: 0.7; }
+
+  select {
+    font: inherit;
+    padding: 0.15rem 0.3rem;
+    border-radius: 4px;
+  }
 
   // The mode name changes every few seconds; a fixed-width slot stops the link
   // beside it jumping around as the name gets longer or shorter.
@@ -71,5 +83,9 @@
     display: inline-block;
     min-width: 8em;
     font-family: monospace;
+    opacity: 0.75;
   }
+
+  // Push the link to the far end, away from the controls.
+  a { margin-left: auto; }
 }
