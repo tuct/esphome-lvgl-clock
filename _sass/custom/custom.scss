@@ -48,7 +48,11 @@
 
   canvas {
     display: block;
-    width: 100%;
+    // 70% of the content column: at full width the wall dominated the page and
+    // pushed everything that explains it below the fold. The aspect ratio does
+    // the rest, so this is the only number to change.
+    width: 70%;
+    max-width: 100%;
     height: auto;
     aspect-ratio: 8 / 3;
     background: #000;

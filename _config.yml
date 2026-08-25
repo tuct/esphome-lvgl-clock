@@ -70,16 +70,18 @@ defaults:
     values: { title: "First prototype", parent: "Build: 24 round screens", nav_order: 1 }
   - scope: { path: "digital_clock_clock_24_4_screens/README.md" }
     values: { title: "Build: 4 screens", nav_order: 4 }
+  # Examples and gifgen are about the component, not about the clock - they sit
+  # under it rather than as siblings of the builds.
   - scope: { path: "components/lvgl_clock/README.md" }
-    values: { title: "The component", nav_order: 5 }
+    values: { title: "The component", nav_order: 5, has_children: true }
   - scope: { path: "examples/README.md" }
-    values: { title: "Examples", nav_order: 6 }
-  - scope: { path: "tools/clockclock24-sim/README.md" }
-    values: { title: "Sandbox & pattern editor", nav_order: 7 }
+    values: { title: "Examples", parent: "The component", nav_order: 1 }
   - scope: { path: "tools/gifgen/README.md" }
-    values: { title: "gifgen", nav_order: 8 }
+    values: { title: "gifgen", parent: "The component", nav_order: 2 }
   - scope: { path: "images/hw/README.md" }
-    values: { title: "Hardware photos", nav_order: 9 }
+    values: { title: "Hardware photos", parent: "The component", nav_order: 3 }
+  - scope: { path: "tools/clockclock24-sim/README.md" }
+    values: { title: "Sandbox & pattern editor", nav_order: 6 }
 
 # The sandbox is a static app and is copied through untouched: Jekyll only
 # processes files that HAVE front matter, and its .html and .js have none.
