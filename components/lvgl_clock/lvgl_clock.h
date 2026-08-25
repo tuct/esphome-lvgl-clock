@@ -109,8 +109,12 @@ enum ClockMode {
   // Every clock rests as one vertical stroke and scissors open, mirrored about
   // the wall's centre line, spreading outwards from the middle.
   CC_MODE_MIRROR_WAVE,
+  // Plays a motion pattern authored in tools/clockclock24-sim and carried over
+  // the bus - see pattern_store.h. Which one is `pattern_slot`, which travels
+  // in the sync packet alongside the mode.
+  CC_MODE_PATTERN,
   // Keep last: the sync platform validates incoming modes against this.
-  CC_MODE_LAST = CC_MODE_MIRROR_WAVE,
+  CC_MODE_LAST = CC_MODE_PATTERN,
 };
 
 // Mode name for logs. The wire format is an integer, and "mode 5" in a log is
@@ -142,6 +146,8 @@ inline const char *clock_mode_name(ClockMode m) {
       return "zipper";
     case CC_MODE_MIRROR_WAVE:
       return "mirror_wave";
+    case CC_MODE_PATTERN:
+      return "pattern";
   }
   return "unknown";
 }
@@ -250,6 +256,17 @@ class LvglClock : public Component, public lvgl::LvCompound {
   void set_movement(MovementMode m) { this->movement_ = m; }
   void set_mode_speed(float s) { this->mode_speed_ = s; }
   void set_mode(ClockMode m);
+  // Which pattern `mode: pattern` draws. Set from the sync packet, so the whole
+  // wall plays the same one; a slot with nothing in it falls back to the time.
+  void set_pattern_slot(int slot) {
+    if (slot != this->pattern_slot_) {
+      this->pattern_slot_ = slot;
+      if (this->mode_ == CC_MODE_PATTERN)
+        this->cc_dirty_ = true;
+    }
+  }
+  int get_pattern_slot() const { return this->pattern_slot_; }
+
   void set_time_mode() { this->set_mode(CC_MODE_TIME); }
   void set_rotate_left_mode() { this->set_mode(CC_MODE_ROTATE_LEFT); }
   void set_flying_birds_mode() { this->set_mode(CC_MODE_FLYING_BIRDS); }
@@ -265,6 +282,22 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // until the time is valid.
   void set_cycle_interval(uint32_t interval_s) { this->cycle_interval_s_ = interval_s; }
   void add_cycle_mode(ClockMode m) { this->cycle_modes_.push_back(m); }
+
+  // ---- runtime control ------------------------------------------------------
+  //
+  // The same two settings, changed while it runs. Only the MASTER acts on
+  // them - a slave is a follower and never picks - so nothing here has to reach
+  // the other boards, and there is no wire format to extend.
+  uint32_t get_cycle_interval() const { return this->cycle_interval_s_; }
+  void clear_cycle_modes() { this->cycle_modes_.clear(); }
+  size_t cycle_mode_count() const { return this->cycle_modes_.size(); }
+
+  // "birds,temp,wave" -> the list. Unknown names are DROPPED, not rejected:
+  // one typo in a field of twelve should cost you that entry, not the whole
+  // list. What was accepted comes back from get_cycle_modes_text(), which the
+  // entity republishes so you can see it.
+  void set_cycle_modes_text(const std::string &text);
+  std::string get_cycle_modes_text() const;
 #ifdef USE_SENSOR
   // Source for `mode: temp`. Optional: with no sensor - or before it has
   // published a reading - the temp mode is skipped in the cycle rather than
@@ -480,6 +513,7 @@ class LvglClock : public Component, public lvgl::LvCompound {
   void tick_rotating_maze_(double t);
   void tick_zipper_(double t);
   void tick_mirror_wave_(double t);
+  void tick_pattern_(double t);
   // The animation time base: seconds, monotonic, smooth, and phase-aligned
   // with every other node on the wall.
   //
@@ -527,7 +561,7 @@ class LvglClock : public Component, public lvgl::LvCompound {
     return m == CC_MODE_ROTATE_LEFT || m == CC_MODE_FLYING_BIRDS || m == CC_MODE_WAVE ||
            m == CC_MODE_SPIRAL || m == CC_MODE_WIND || m == CC_MODE_LOVE ||
            m == CC_MODE_TEMP || m == CC_MODE_ROTATING_MAZE || m == CC_MODE_ZIPPER ||
-           m == CC_MODE_MIRROR_WAVE;
+           m == CC_MODE_MIRROR_WAVE || m == CC_MODE_PATTERN;
   }
   // Starts/ends the choreography window. Called every loop.
   void update_mode_cycle_();
@@ -634,6 +668,7 @@ class LvglClock : public Component, public lvgl::LvCompound {
   MovementMode movement_{CC_MOVE_OPPOSITE};
   float mode_speed_{1.0f};
   ClockMode mode_{CC_MODE_TIME};
+  int pattern_slot_{0};
   // Animation time base - see anim_clock_(). Never wrapped: a double holds
   // seconds at sub-microsecond resolution for longer than any of this will
   // run, and wrapping it would put a discontinuity into every animation whose

@@ -24,8 +24,42 @@ static const uint32_t STATUS_INTERVAL_MS = 10000;
 // single dropped line, short enough to notice before the clock visibly drifts.
 static const uint32_t SYNC_TIMEOUT_MS = 10000;
 
+std::string SyncTime::set_pattern_text(int slot, const std::string &text) {
+  std::string err = pattern_store().from_text(slot, text);
+  if (!err.empty()) {
+    ESP_LOGW(TAG, "Pattern %d rejected: %s", slot, err.c_str());
+    return err;
+  }
+  pattern_store().save();
+  // Start the push again from the top rather than waiting out pattern_repeat.
+  // An edit you cannot see for five minutes is an edit you will assume failed.
+  this->pattern_next_ms_ = millis();
+  this->pattern_tx_slot_ = -1;
+  return "";
+}
+
+void SyncTime::reload_patterns_from_firmware() {
+  for (int slot = 0; slot < PATTERN_MAX_PER_NODE; slot++)
+    pattern_store().from_text(slot, this->firmware_text_[slot]);
+  pattern_store().save();
+  this->pattern_next_ms_ = millis();
+  this->pattern_tx_slot_ = -1;
+  ESP_LOGI(TAG, "Patterns reloaded from firmware");
+}
+
 void SyncTime::setup() {
   ESP_LOGCONFIG(TAG, "Setting up %s time sync...", this->broadcast_ ? "master" : "slave");
+  // Flash wins over the compiled-in folder: a pattern edited from Home
+  // Assistant should survive a reboot, and the folder is the starting point
+  // rather than the authority. `reload` is how you get back to it.
+  if (this->broadcast_)
+    pattern_store().load();
+  if (this->broadcast_ && pattern_store().count() > 0) {
+    this->pattern_next_ms_ = millis() + this->pattern_delay_ms_;
+    ESP_LOGCONFIG(TAG, "%d pattern(s) loaded, first push in %.0f s, repeating every %.0f s",
+                  pattern_store().count(), this->pattern_delay_ms_ / 1000.0f,
+                  this->pattern_repeat_ms_ / 1000.0f);
+  }
   // On a multi-panel master the same rule applies within the board: widget 0 is
   // the picker and the rest are told, so the three panels cannot disagree about
   // which choreography is running either. update() pushes the mode across.
@@ -81,6 +115,16 @@ void SyncTime::update() {
   // 24 different times.
   int demo_min = (primary != nullptr && mode == (int) CC_MODE_DEMO) ? primary->get_demo_min() : -1;
 
+  // Which pattern the wall is playing. Advanced on each ENTRY into pattern
+  // mode, so a `cycle_modes:` list containing `pattern` walks through the
+  // folder rather than showing the first one for ever.
+  if (mode == (int) CC_MODE_PATTERN && this->last_tx_mode_ != (int) CC_MODE_PATTERN &&
+      pattern_store().count() > 0) {
+    this->pattern_slot_ = (this->pattern_slot_ + 1) % pattern_store().count();
+  }
+  for (auto *clock : this->clocks_)
+    clock->set_pattern_slot(this->pattern_slot_);
+
   // Mirror the picker onto this board's other panels, exactly as a slave does
   // with what arrives on the wire - so all three agree even mid-choreography.
   for (size_t i = 1; i < this->clocks_.size(); i++) {
@@ -103,9 +147,9 @@ void SyncTime::update() {
     clock->adopt_temperature(temp);
   this->last_temp_ = temp;
 
-  char out[48];
-  int n = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d\n", (unsigned) epoch, (unsigned) ms, mode,
-                   demo_min, temp);
+  char out[56];
+  int n = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d %d\n", (unsigned) epoch, (unsigned) ms, mode,
+                   demo_min, temp, this->pattern_slot_);
   if (n <= 0)
     return;
 
@@ -127,8 +171,8 @@ void SyncTime::update() {
     // Re-format with the corrected stamp. The length can shift by a digit,
     // which moves the wire time by <0.1 ms - far below the jitter this is
     // correcting for, so one pass is enough.
-    int n2 = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d\n", (unsigned) adj_epoch,
-                      (unsigned) adj_ms, mode, demo_min, temp);
+    int n2 = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d %d\n", (unsigned) adj_epoch,
+                      (unsigned) adj_ms, mode, demo_min, temp, this->pattern_slot_);
     if (n2 > 0)
       n = n2;
   }
@@ -152,8 +196,50 @@ void SyncTime::update() {
   }
 }
 
+// Two lines per call. loop() runs every few ms, so a 25-line pattern is out in
+// well under a second while never holding the bus long enough to delay a time
+// packet.
+static const int PATTERN_LINES_PER_LOOP = 2;
+
+void SyncTime::push_patterns_() {
+  if (pattern_store().count() == 0)
+    return;
+  uint32_t now = millis();
+
+  if (this->pattern_tx_slot_ < 0) {
+    if (this->pattern_next_ms_ == 0 || (int32_t) (now - this->pattern_next_ms_) < 0)
+      return;
+    this->pattern_tx_slot_ = 0;
+    this->pattern_tx_clock_ = -1;
+    ESP_LOGI(TAG, "TX patterns: pushing %d", pattern_store().count());
+  }
+
+  char out[64];
+  for (int i = 0; i < PATTERN_LINES_PER_LOOP && this->pattern_tx_slot_ >= 0; i++) {
+    int n = this->pattern_tx_clock_ < 0
+                ? pattern_store().format_name(this->pattern_tx_slot_, out, sizeof(out))
+                : pattern_store().format_clock(this->pattern_tx_slot_, this->pattern_tx_clock_, out,
+                                               sizeof(out));
+    if (n > 0)
+      this->write_array((const uint8_t *) out, (size_t) n);
+
+    if (++this->pattern_tx_clock_ >= PATTERN_CLOCKS) {
+      this->pattern_tx_clock_ = -1;
+      if (++this->pattern_tx_slot_ >= pattern_store().count()) {
+        // Done. Repeat later so a board that rebooted - or was plugged in
+        // after the wall was already running - picks the patterns up without
+        // anyone having to reset the master.
+        this->pattern_tx_slot_ = -1;
+        this->pattern_next_ms_ = now + this->pattern_repeat_ms_;
+        ESP_LOGI(TAG, "TX patterns: done, next in %.0f s", this->pattern_repeat_ms_ / 1000.0f);
+      }
+    }
+  }
+}
+
 void SyncTime::loop() {
   if (this->broadcast_) {
+    this->push_patterns_();
     // Send the moment the mode changes, instead of waiting for the next tick.
     //
     // This is the big one for "the master starts early". The master switches
@@ -227,6 +313,14 @@ void SyncTime::loop() {
 }
 
 void SyncTime::handle_line_() {
+  // Pattern definitions share the bus with the time. They are their own line
+  // types so a node that does not understand them - an older slave - simply
+  // logs an unknown prefix and carries on telling the time.
+  if (pattern_store().parse_line(this->rx_buf_)) {
+    this->packets_++;
+    this->last_rx_ms_ = millis();
+    return;
+  }
   if (strncmp(this->rx_buf_, "CC24 ", 5) != 0) {
     // Garbled framing is the usual signature of a baud mismatch or a shared
     // pin, so show the offending bytes instead of dropping them quietly.
@@ -265,6 +359,12 @@ void SyncTime::handle_line_() {
   int temp = (int) strtol(p, &end, 10);
   if (end == p)
     temp = TEMP_NONE;
+  p = end;
+  // Optional 6th field: which pattern slot `mode: pattern` should draw. Absent
+  // from an older master's packets, which reads as slot 0.
+  int pattern_slot = (int) strtol(p, &end, 10);
+  if (end == p)
+    pattern_slot = 0;
 
   // epoch 0 is the master saying "I have no time yet, but here is the mode" -
   // that is how the boot animation reaches the wall before SNTP lands, and how
@@ -319,6 +419,9 @@ void SyncTime::handle_line_() {
       ESP_LOGI(TAG, "RX mode -> %s", clock_mode_name((ClockMode) mode));
     }
     for (auto *clock : this->clocks_) {
+      // Slot before mode: entering `pattern` should draw the right one on its
+      // first frame, not the previous slot for a frame and then swap.
+      clock->set_pattern_slot(pattern_slot);
       clock->set_mode((ClockMode) mode);
       if (mode == (int) CC_MODE_DEMO && demo_min >= 0)
         clock->adopt_demo_min(demo_min);

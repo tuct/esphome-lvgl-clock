@@ -14,7 +14,9 @@
 #include "esphome/components/sensor/sensor.h"
 #endif
 #include "lvgl_clock.h"
+#include "pattern_store.h"
 
+#include <string>
 #include <vector>
 
 namespace esphome {
@@ -57,6 +59,39 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   float get_setup_priority() const override { return setup_priority::DATA; }
 
   void set_broadcast(bool on) { this->broadcast_ = on; }
+  // Master only. How long after boot the first pattern push goes out, and how
+  // often it repeats. The delay exists because the master is the only board
+  // with Wi-Fi: it is up and broadcasting while the slaves are still bringing
+  // up PSRAM, three SPI panels and LVGL. Patterns sent into that window are
+  // simply not heard, and unlike the time - which repeats every second - a
+  // pattern that is missed stays missed until the next repeat.
+  void set_pattern_delay(uint32_t ms) { this->pattern_delay_ms_ = ms; }
+  void set_pattern_repeat(uint32_t ms) { this->pattern_repeat_ms_ = ms; }
+  // ---- runtime pattern editing ----------------------------------------------
+  //
+  // Read and written by template `text:` entities on the master - see
+  // digital_clock_clock_24_24_round_screens/board_d.yaml. Kept here rather than
+  // as a custom ESPHome platform so the entities live in YAML, where they can
+  // be renamed or dropped without touching the component.
+  std::string get_pattern_text(int slot) const { return pattern_store().to_text(slot); }
+  // Returns "" on success or a reason. A successful write saves to flash and
+  // re-pushes the whole set down the bus straight away, so the wall picks up an
+  // edit within a second rather than at the next repeat.
+  std::string set_pattern_text(int slot, const std::string &text);
+  // Throw away runtime edits and go back to what was compiled in.
+  void reload_patterns_from_firmware();
+
+  // Called from codegen, once per clock, to bake the folder's patterns in.
+  void add_pattern_name(int slot, const char *name) { pattern_store().set_name(slot, name); }
+  void add_pattern_clock(int slot, int clock, uint16_t h0, uint16_t h1, int8_t d0, int8_t d1,
+                         uint8_t v0, uint8_t v1) {
+    PatternClock c{h0, h1, d0, d1, v0, v1};
+    pattern_store().set_clock(slot, clock, c);
+    // Remember the compiled-in set, so `reload` has something to go back to
+    // after flash-restored or HA-written patterns have replaced it.
+    if (slot < PATTERN_MAX_PER_NODE && clock == PATTERN_CLOCKS - 1)
+      this->firmware_text_[slot] = pattern_store().to_text(slot);
+  }
 #ifdef USE_SENSOR
   // Master only: the temperature that goes out with the time, so `mode: temp`
   // shows the same reading on every board without any of them having a sensor.
@@ -70,6 +105,13 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   void add_clock(LvglClock *clock) { this->clocks_.push_back(clock); }
 
  protected:
+  // Master only: dribble the pattern definitions onto the bus, a couple of
+  // lines per loop(). Sent in one burst they would be ~800 bytes per pattern,
+  // which at 115200 is 70 ms of wire time that a time packet would have to
+  // queue behind - and the whole point of this bus is that the time is not
+  // delayed.
+  void push_patterns_();
+
   // Parses one complete line out of rx_buf_ and applies it.
   void handle_line_();
   // Pushes the sync state onto every mirrored widget, so their sync dots come
@@ -81,9 +123,10 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
 
   bool broadcast_{false};
   std::vector<LvglClock *> clocks_;
-  // "CC24 4294967295 999 3 59\n" is 25 bytes; leave room for slop and always
-  // NUL-terminate before parsing.
-  char rx_buf_[48];
+  // "CC24 4294967295 999 3 59 -1000 7\n" is 33 bytes and a pattern line
+  // "CCPC 7 23 359 359 -1 -1 100 100\n" is 32; 64 leaves room for both plus
+  // slop, and there is always a NUL before parsing.
+  char rx_buf_[64];
   uint8_t rx_len_{0};
   bool synced_{false};
   // Mirrors what the widgets were last told. Starts true so setup()'s
@@ -108,6 +151,17 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   // Slave only: last mode taken off the wire, so a change is logged once
   // rather than on every packet. -1 = nothing received yet.
   int last_rx_mode_{-1};
+  // Pattern push state. `pattern_tx_slot_` < 0 means "nothing to send".
+  uint32_t pattern_delay_ms_{30000};
+  uint32_t pattern_repeat_ms_{300000};
+  uint32_t pattern_next_ms_{0};
+  int pattern_tx_slot_{-1};
+  // -1 = the header line is still to go, then 0..23 are the clocks.
+  int pattern_tx_clock_{-1};
+  // The slot the wall is currently playing, broadcast with the mode.
+  int pattern_slot_{0};
+  // What codegen baked in, kept so `reload` can undo a runtime edit.
+  std::string firmware_text_[PATTERN_MAX_PER_NODE];
 #ifdef USE_SENSOR
   sensor::Sensor *temp_sensor_{nullptr};
 #endif

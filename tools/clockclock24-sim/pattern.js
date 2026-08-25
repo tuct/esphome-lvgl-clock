@@ -145,22 +145,104 @@
     pasteCol(col, src) {
       for (let i = 0; i < NUM_CLOCKS; i++) if (wallPos(i).col === col) spec[i] = clone(src);
     },
-    // Everything needed to reproduce this pattern in code, one clock per line.
-    export() {
-      const sp = o => o.mode === "fixed"
-        ? `{mode:"fixed", v:${(+o.v).toFixed(2)}}`
-        : `{mode:"rel", from:"${o.from}", d:${(+o.d).toFixed(2)}}`;
-      const lines = spec.map((s, i) => {
-        const { col, row } = wallPos(i);
-        return `  /* ${String(i).padStart(2)} col${col} row${row} */ ` +
-               `{a0:${Math.round(s.h0)}, a1:${Math.round(s.h1)}, ` +
-               `dirA:${s.dirA}, dirB:${s.dirB}, ` +
-               `spdA:${sp(s.spdA)}, spdB:${sp(s.spdB)}},`;
-      });
-      return "// speed 1.0 = " + PATTERN_MAX_RATE + " deg/s\nconst PATTERN = [\n" +
-             lines.join("\n") + "\n];";
+    // The whole configuration - home pose and motion, per clock - as JSON that
+    // fromJSON() can read back.
+    toJSON() {
+      const r = v => Math.round(v * 100) / 100;
+      return JSON.stringify({
+        format: "clockclock24-pattern",
+        version: 1,
+        maxRateDegPerS: PATTERN_MAX_RATE,
+        clocks: spec.map(s => ({
+          h0: Math.round(s.h0), h1: Math.round(s.h1),
+          dirA: s.dirA, dirB: s.dirB,
+          spdA: s.spdA.mode === "fixed"
+            ? { mode: "fixed", v: r(s.spdA.v) }
+            : { mode: "rel", from: s.spdA.from, d: r(s.spdA.d) },
+          spdB: s.spdB.mode === "fixed"
+            ? { mode: "fixed", v: r(s.spdB.v) }
+            : { mode: "rel", from: s.spdB.from, d: r(s.spdB.d) },
+        })),
+      }, null, 1);
     },
+
+    // The form an ESPHome text entity takes: "<name>:<base64>".
+    //
+    // A pattern as JSON is ~5 kB and a Home Assistant text entity holds 255
+    // characters, so this is packed - five bytes per clock, mirroring
+    // PatternStore::to_text() in the firmware:
+    //
+    //   0  h0, in 1.5 deg steps (0..239)     3  v0, 0..100
+    //   1  h1                                 4  v1
+    //   2  (dir0+1) << 2 | (dir1+1)
+    //
+    // 24 x 5 = 120 bytes = 160 base64 chars. The 1.5 deg quantisation is ten
+    // times finer than the editor's 15 deg snap, so nothing authored is lost.
+    //
+    // Relative speeds are RESOLVED first: the firmware only ever sees numbers.
+    toESPHome(name) {
+      const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+      const sp = this.resolved();
+      const buf = new Uint8Array(NUM_CLOCKS * 5);
+      for (let i = 0; i < NUM_CLOCKS; i++) {
+        const s = spec[i], b = i * 5;
+        buf[b + 0] = Math.round(wrap360(s.h0) / 1.5) % 240;
+        buf[b + 1] = Math.round(wrap360(s.h1) / 1.5) % 240;
+        buf[b + 2] = ((s.dirA + 1) << 2) | (s.dirB + 1);
+        buf[b + 3] = Math.round(sp[i][0] * 100);
+        buf[b + 4] = Math.round(sp[i][1] * 100);
+      }
+      let out = "";
+      for (let i = 0; i < buf.length; i += 3) {
+        const v = (buf[i] << 16) | ((buf[i + 1] || 0) << 8) | (buf[i + 2] || 0);
+        out += B64[(v >> 18) & 63] + B64[(v >> 12) & 63] +
+               (i + 1 < buf.length ? B64[(v >> 6) & 63] : "=") +
+               (i + 2 < buf.length ? B64[v & 63] : "=");
+      }
+      return (name || "pattern").slice(0, 15) + ":" + out;
+    },
+
+    // Read a configuration back. Returns null on success, or a message.
+    //
+    // Everything is validated and coerced rather than trusted: this is text a
+    // human has been editing, and a bad field should cost you one wrong clock,
+    // not a wall of NaN that silently draws nothing.
+    fromJSON(text, ts) {
+      let o;
+      try { o = JSON.parse(text); } catch (e) { return "not valid JSON — " + e.message; }
+      const list = Array.isArray(o) ? o : (o && o.clocks);
+      if (!Array.isArray(list)) return "no `clocks` array in there";
+      if (list.length !== NUM_CLOCKS) return `expected ${NUM_CLOCKS} clocks, found ${list.length}`;
+
+      const DIRS = ["left", "right", "up", "down"];
+      const num = (v, dflt) => (Number.isFinite(+v) ? +v : dflt);
+      const readSpeed = raw => {
+        if (!raw || typeof raw !== "object") return fixed(0.3);
+        if (raw.mode === "rel")
+          return { mode: "rel",
+                   from: DIRS.indexOf(raw.from) >= 0 ? raw.from : "left",
+                   d: Math.max(-1, Math.min(1, num(raw.d, 0))) };
+        return fixed(clamp01(num(raw.v, 0.3)));
+      };
+
+      const next = blank();
+      for (let i = 0; i < NUM_CLOCKS; i++) {
+        const c = list[i] || {};
+        next[i].h0 = wrap360(num(c.h0, 0));
+        next[i].h1 = wrap360(num(c.h1, 180));
+        next[i].dirA = Math.sign(num(c.dirA, 0));
+        next[i].dirB = Math.sign(num(c.dirB, 0));
+        next[i].spdA = readSpeed(c.spdA);
+        next[i].spdB = readSpeed(c.spdB);
+      }
+      spec = next;
+      this.toHome(ts || 0);      // start from the loaded poses, not from t = 0
+      return null;
+    },
+
   };
   window.CC.tickPattern = tickPattern;
-  window.CC.MODES.pattern = { fn: tickPattern, label: "pattern *" };
+  // No sandbox-only marker on this one: an editor is not a thing that could
+  // ever be ported to the firmware, so the note would be telling you nothing.
+  window.CC.MODES.pattern = { fn: tickPattern, label: "Motion Pattern Editor Mode" };
 })();

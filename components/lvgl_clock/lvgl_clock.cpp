@@ -1,4 +1,5 @@
 #include "lvgl_clock.h"
+#include "pattern_store.h"
 #include "esphome/core/log.h"
 #include <sys/time.h>
 #ifdef USE_ESP32
@@ -306,6 +307,9 @@ void LvglClock::tick_choreography_(ClockMode m, double t) {
       break;
     case CC_MODE_MIRROR_WAVE:
       this->tick_mirror_wave_(t);
+      break;
+    case CC_MODE_PATTERN:
+      this->tick_pattern_(t);
       break;
     default:
       break;
@@ -1261,6 +1265,82 @@ void LvglClock::tick_mirror_wave_(double t) {
   this->cc_dirty_ = true;
 }
 
+// Draws a motion pattern from the store - see pattern_store.h.
+//
+// There is no choreography here at all: the shape is data, authored in
+// tools/clockclock24-sim and carried to this board over the bus. Every hand is
+// pose + dir * speed * rate * t, which is continuous for any data whatsoever,
+// so a pattern cannot make a hand jump however badly it was authored. That is
+// the reason this mode can safely take its input from a text file.
+//
+// An empty or half-received slot draws the time instead. A slave that has not
+// heard the pattern push yet would otherwise sit on a blank wall, which looks
+// exactly like a fault; showing the clock is both harmless and honest.
+void LvglClock::tick_pattern_(double t) {
+  const Pattern *p = pattern_store().get(this->pattern_slot_);
+  if (p == nullptr) {
+    this->tick_time_(millis());
+    return;
+  }
+  double ts = t * this->mode_speed_;
+  for (int c = 0; c < NUM_CLOCKS && c < PATTERN_CLOCKS; c++) {
+    const PatternClock &pc = p->clocks[c];
+    float a0 = (float) pc.h0 + (float) pc.dir0 * (pc.v0 / 100.0f) * PATTERN_MAX_RATE * (float) ts;
+    float a1 = (float) pc.h1 + (float) pc.dir1 * (pc.v1 / 100.0f) * PATTERN_MAX_RATE * (float) ts;
+    this->cur_[c * 2 + 0] = wrap360(a0);
+    this->cur_[c * 2 + 1] = wrap360(a1);
+  }
+  this->cc_dirty_ = true;
+}
+
+// Parse a comma-separated cycle list. See set_cycle_modes_text() in the header
+// for why unknown names are dropped rather than refused.
+void LvglClock::set_cycle_modes_text(const std::string &text) {
+  this->cycle_modes_.clear();
+  size_t i = 0;
+  while (i <= text.size()) {
+    size_t j = text.find(',', i);
+    if (j == std::string::npos)
+      j = text.size();
+    std::string name = text.substr(i, j - i);
+    // Trim - a list typed by hand will have spaces after the commas.
+    size_t a = name.find_first_not_of(" \t");
+    size_t b = name.find_last_not_of(" \t");
+    if (a != std::string::npos)
+      name = name.substr(a, b - a + 1);
+    if (!name.empty()) {
+      bool found = false;
+      for (int m = 0; m <= (int) CC_MODE_LAST; m++) {
+        // `time` and `demo` are excluded on purpose: `time` is what a window
+        // returns TO, and demo is a bring-up aid that would stall the cycle.
+        if (m == (int) CC_MODE_TIME || m == (int) CC_MODE_DEMO)
+          continue;
+        if (name == clock_mode_name((ClockMode) m)) {
+          this->cycle_modes_.push_back((ClockMode) m);
+          found = true;
+          break;
+        }
+      }
+      if (!found)
+        ESP_LOGW(TAG, "cycle_modes: '%s' is not a mode, dropped", name.c_str());
+    }
+    if (j >= text.size())
+      break;
+    i = j + 1;
+  }
+  ESP_LOGI(TAG, "cycle_modes set to %u entries", (unsigned) this->cycle_modes_.size());
+}
+
+std::string LvglClock::get_cycle_modes_text() const {
+  std::string out;
+  for (size_t i = 0; i < this->cycle_modes_.size(); i++) {
+    if (i != 0)
+      out += ",";
+    out += clock_mode_name(this->cycle_modes_[i]);
+  }
+  return out;
+}
+
 // Take the master's fake minute instead of counting our own. Resets the local
 // interval timer too, so this node does not immediately tick a second time.
 void LvglClock::adopt_demo_min(int m) {
@@ -1568,6 +1648,10 @@ void LvglClock::loop() {
         break;
       case CC_MODE_MIRROR_WAVE:
         this->tick_mirror_wave_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_PATTERN:
+        this->tick_pattern_(choreo_t);
         this->blend_into_mode_();
         break;
       case CC_MODE_DEMO:

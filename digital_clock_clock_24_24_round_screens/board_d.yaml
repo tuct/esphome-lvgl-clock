@@ -40,9 +40,11 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
-#api:
-#  encryption:
-#    key: !secret api_key
+# Needed for the pattern and cycle entities below - they are Home Assistant
+# entities, and `api:` is what publishes them.
+api:
+  encryption:
+    key: !secret api_key
 
 ota:
   - platform: esphome
@@ -76,6 +78,18 @@ time:
     # The wall's temperature source, for `mode: temp`. Master only - the
     # reading rides along in the sync packet to every other board.
     temperature_sensor_id: room_temp
+    # Motion patterns exported from tools/clockclock24-sim. Baked into THIS
+    # board's firmware and pushed to the other seven over the bus, so a new
+    # pattern is one file plus a reflash of the master - the slaves need no
+    # filesystem and no separate flash step.
+    #
+    # `pattern_delay` is why this works at all: the master is the only board
+    # with Wi-Fi, so it is up and talking while the slaves are still bringing
+    # up PSRAM, three panels and LVGL. 30 s clears that comfortably. The repeat
+    # is so a board rebooted later picks them up on its own.
+    patterns: patterns
+    pattern_delay: 30s
+    pattern_repeat: 5min
 
 interval:
   # Boot phases: spin while connecting, birds while waiting for NTP, then the
@@ -117,6 +131,83 @@ interval:
                         - lvgl_clock.flying_birds: dc_a
                       else:
                         - lvgl_clock.rotate_left: dc_a
+
+# ---------------------------------------------------------------------------
+# Runtime control from Home Assistant. MASTER ONLY, and it needs no changes on
+# the other seven boards at all:
+#
+#   - the cycle list and its interval are read only by the picker, which is
+#     this board, so they never go on the wire;
+#   - patterns do go on the wire, but through the push that already exists.
+#
+# These are stock `template` entities rather than a custom ESPHome platform, so
+# they can be renamed, dropped or added to here without touching the component.
+# ---------------------------------------------------------------------------
+text:
+  # Eight pattern slots, read AND write. Reading back matters as much as
+  # writing: the state is the pattern that is actually loaded, so you can copy
+  # one wall's pattern into another by copying the string.
+  #
+  # The format is "<name>:<base64>" - about 170 characters, which is what the
+  # packing in pattern_store.h exists to achieve. A pattern as JSON is ~5 kB
+  # and a Home Assistant text entity holds 255.
+  #
+  # Export one from tools/clockclock24-sim with "Copy for ESPHome".
+  - platform: template
+    name: "Pattern 1"
+    id: pattern_1
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(0);'
+    set_action:
+      - lambda: 'id(sync_out).set_pattern_text(0, x);'
+    update_interval: 60s
+  - platform: template
+    name: "Pattern 2"
+    id: pattern_2
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(1);'
+    set_action:
+      - lambda: 'id(sync_out).set_pattern_text(1, x);'
+    update_interval: 60s
+
+  # The choreography rotation, in order. Repeats are meaningful: listing `temp`
+  # every other entry gives it half the slots. Unknown names are dropped with a
+  # warning and the field republishes what was accepted, so a typo shows up
+  # rather than silently changing the wall.
+  - platform: template
+    name: "Cycle modes"
+    id: cycle_modes_text
+    mode: text
+    max_length: 255
+    lambda: 'return id(dc_a).get_cycle_modes_text();'
+    set_action:
+      - lambda: 'id(dc_a).set_cycle_modes_text(x);'
+    update_interval: 30s
+
+select:
+  # How often a window opens. The 35 s window itself is fixed - only the
+  # cadence is yours to set.
+  - platform: template
+    name: "Cycle interval"
+    id: cycle_interval_select
+    options: ["1 min", "2 min", "3 min", "4 min", "5 min", "10 min", "15 min", "30 min", "60 min"]
+    lambda: |-
+      char buf[12];
+      snprintf(buf, sizeof(buf), "%u min", (unsigned) (id(dc_a).get_cycle_interval() / 60));
+      return std::string(buf);
+    set_action:
+      - lambda: 'id(dc_a).set_cycle_interval((uint32_t) atoi(x.c_str()) * 60);'
+    update_interval: 30s
+
+button:
+  # Throw away anything written from Home Assistant and go back to the
+  # patterns/ folder as compiled in. The way out of a bad edit.
+  - platform: template
+    name: "Reload patterns from firmware"
+    on_press:
+      - lambda: 'id(sync_out).reload_patterns_from_firmware();'
 
 # Stand-in temperature for `mode: temp` until a real sensor is wired up. It
 # walks 18->24 C and back so the digits actually change while you watch. Swap

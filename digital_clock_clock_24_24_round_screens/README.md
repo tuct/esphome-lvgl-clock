@@ -423,6 +423,7 @@ the wall just tells the time.
 | `rotating_maze` | A chevron field turning, rows counter-rotating, easing almost to a stop on each aligned figure |
 | `zipper` | A front runs across a field of diagonals, unzipping each column into mirrored chevrons |
 | `mirror_wave` | Vertical strokes scissor open, mirrored about the wall's centre, spreading outwards from the middle |
+| `pattern` | Plays a pattern from [`patterns/`](./patterns) — authored in the sim, pushed to every board over the bus |
 | `love` | Spells **LOVE** across the four digits |
 | `temp` | The temperature, as `-9`…`99` plus `°C` |
 | `rotate_left` | A plain continuous rotation |
@@ -456,6 +457,63 @@ clockclock24:
 - **`sync_dot:`** is a diagnostic, not decoration: a healthy wall shows
   nothing. Leave it on — see
   [The sync dot](#the-sync-dot--reading-the-wall-without-a-laptop).
+
+### Motion patterns — design them in the browser
+
+Beyond the built-in choreographies, `mode: pattern` plays a **pattern**: 24
+per-clock poses and speeds that are *data*, not code. You draw them in
+[**`tools/clockclock24-sim`**](../tools/clockclock24-sim) — the same engine as
+the firmware, running in a browser, so what you see there is what the wall
+does.
+
+Open [`index.html`](../tools/clockclock24-sim/index.html) (no server, no build
+step) and:
+
+1. Pick **Motion Pattern Editor Mode**. Edit and Play come on together.
+2. **Click a clock** to select it; **shift-click** for several — every edit then
+   applies to all of them.
+3. **Drag** its hands to set the pose. Give each hand a direction (`←` `—` `→`)
+   and a speed, either fixed or *"same as my neighbour ±"* so a gradient across
+   the wall is one number rather than eight.
+4. **Copy** a clock and paste it to its row, its column or all 24.
+5. **Export**, and save the JSON into [`patterns/`](./patterns) as
+   `<name>.json`. The filename becomes the pattern's name in the logs.
+
+```bash
+esphome run board_d.yaml       # the master only, over Wi-Fi
+```
+
+**That is the whole update cycle, and it only touches the master.** Because the
+master is the one board with `wifi:` and `ota:`, a new pattern goes out over the
+network — no USB, no opening the frame. Thirty seconds after it reboots it
+pushes the patterns down the sync bus, and all seven listeners pick them up
+without being reflashed at all.
+
+That asymmetry is the point of the whole design. The slaves carry no network
+stack precisely so they never need one, and patterns are the thing you actually
+iterate on — the mode you would otherwise be reflashing eight boards to try.
+
+Up to **8** patterns; add `pattern` to `cycle_modes:` and the wall walks through
+the folder.
+
+#### …or skip the reflash entirely
+
+With `api:` on, this board exposes the patterns and the rotation as Home
+Assistant entities, and both are editable **while it runs**:
+
+| | |
+| --- | --- |
+| `Pattern 1…8` | Paste a string from the sim's **Copy for ESPHome** button. Reads back too, so copying the state copies the pattern |
+| `Cycle modes` | `birds,temp,wave,temp,pattern` — order and repeats count |
+| `Cycle interval` | 1…60 min |
+| `Reload patterns from firmware` | Undo, back to [`patterns/`](./patterns) |
+
+Edits are saved to flash, so the wall keeps them with Home Assistant off — the
+seven listeners still need nothing but power and a wire. A pattern write is
+pushed down the bus straight away rather than at the next repeat.
+
+See [Motion patterns](../components/lvgl_clock/README.md#motion-patterns) for
+the packing, the wire format and the timing.
 
 ### Colours
 

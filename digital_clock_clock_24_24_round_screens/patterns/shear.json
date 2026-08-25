@@ -1,0 +1,343 @@
+{
+ "format": "clockclock24-pattern",
+ "version": 1,
+ "maxRateDegPerS": 90,
+ "clocks": [
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": -1,
+   "dirB": -1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.25
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.25
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  },
+  {
+   "h0": 315,
+   "h1": 45,
+   "dirA": 1,
+   "dirB": 1,
+   "spdA": {
+    "mode": "fixed",
+    "v": 0.35
+   },
+   "spdB": {
+    "mode": "fixed",
+    "v": 0.35
+   }
+  }
+ ]
+}

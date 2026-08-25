@@ -6,7 +6,8 @@ and redraws itself — no `interval:` + lambda glue needed. Pick a **style**:
 
 | `style` | preview | what it looks like |
 | --- | --- | --- |
-| [**clockclock24**](#style-clockclock24) *(default)* | <img src="../../images/clockclock24.gif" width="200"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` / `wave` / `spiral` / `wind` / `rotating_maze` / `zipper` / `mirror_wave` / `love` idle animations. |
+| [**clockclock24**](#style-clockclock24) *(default)* | <img src="../../images/clockclock24.gif" width="200"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` / `wave` / `spiral` / `wind` / `rotating_maze` / `zipper` / `mirror_wave` / `love` idle animations, plus
+`pattern` for ones you author yourself. |
 | [**analog**](#style-analog) | <img src="../../images/analog.gif" width="160"> | A classic analogue clock face — independently configurable ticks and per-hand style/colour. |
 | [**digital**](#style-digital) | <img src="../../images/digital.gif" width="200"> | `HH:MM(:SS)` as a **7-segment** display with a "ghost 8", optional blinking colon, and an AM/PM column in 12h mode. |
 | [**flipclock**](#style-flipclock) | <img src="../../images/flipclock.gif" width="200"> | `HH:MM(:SS)` as **split-flap cards** with real font-rendered digits and an animated flip on every change ([flipclock.js](https://flipclockjs.com/) look). |
@@ -179,7 +180,8 @@ clockclock24:
   movement: opposite        # opposite | clockwise | counter | long
   transition_length: 2s      # sweep duration on a time change
   mode: time                 # time | rotate_left | flying_birds | wave | spiral
-                             #      | wind | rotating_maze | zipper | mirror_wave | love | temp | demo
+                             #      | wind | rotating_maze | zipper | mirror_wave | love | temp
+                             #      | pattern | demo
   mode_speed: 1.0             # idle-animation speed multiplier (idle animations only)
   cycle_modes: ...           # break out into a random choreography - see below
   spacing: 0.0                # gap between HH and MM, in clock-widths
@@ -239,6 +241,7 @@ slice of one figure, with no coordination beyond the synced time.
 | `rotating_maze` | `lvgl_clock.rotating_maze` | A chevron per clock, alternating by column, the pair turning as a rigid body — clockwise on rows 0 and 2, counter-clockwise on row 1. The rate is **not constant**: it eases to 40% of pace each time the wall lands on an aligned figure, so the lattice reads as forming and dissolving rather than spinning |
 | `zipper` | `lvgl_clock.zipper` | The wall rests as one field of `\` diagonals; a front runs across it left to right, **unzipping** each column into a pair of mirrored chevrons (`> <`) and doing it up behind. Between passes a resting column leans slowly and back, so the field is never quite frozen |
 | `mirror_wave` | `lvgl_clock.mirror_wave` | Every clock rests as one vertical stroke and scissors open, **mirrored about the wall's centre line** — the left half opens right, the right half left, and the middle row the other way from the two around it. Starts at the middle columns and spreads outwards; the top and bottom rows run at 75% of the middle's rate, so the three rows beat against each other on a 36 s cycle |
+| `pattern` | `lvgl_clock.pattern` | Plays a **motion pattern** — 24 per-clock poses and speeds authored in [`tools/clockclock24-sim`](../../tools/clockclock24-sim) rather than written in C++. Which one is the pattern slot, which travels in the sync packet; a slot that has not arrived yet draws the time instead |
 | `love` | `lvgl_clock.love` | Spells **LOVE** across the four digit positions and holds it — a pose rather than an animation, swept in and out like any other mode change |
 | `time` | `lvgl_clock.show_time` | Not an animation — back to the clock |
 
@@ -751,6 +754,120 @@ The examples read Wi-Fi/API/OTA credentials from `secrets.yaml` — copy
 esphome compile examples/example_clockclock24.yaml
 esphome run     examples/example_clockclock24.yaml
 ```
+
+## Motion patterns
+
+`mode: pattern` draws a **pattern**: 24 per-clock poses and speeds, authored in
+[`tools/clockclock24-sim`](../../tools/clockclock24-sim) and exported as JSON.
+No C++, no reflash of the slaves.
+
+Point the **master's** time platform at a folder:
+
+```yaml
+time:
+  - platform: lvgl_clock
+    id: sync_out
+    uart_id: sync_bus
+    lvgl_clock_id: [dc_a, dc_b, dc_c]
+    broadcast_interval: 1s
+    patterns: patterns        # a folder of exported .json, next to the YAML
+    pattern_delay: 30s        # first push, after the slaves have booted
+    pattern_repeat: 5min      # and again, for boards that reboot later
+```
+
+Up to **8** patterns per node, named after their files.
+
+Author them in the browser: [`tools/clockclock24-sim`](../../tools/clockclock24-sim)
+runs this same engine, so a pattern looks on the wall exactly as it did on
+screen. Pick **Motion Pattern Editor Mode**, pose the hands, set a direction and
+speed per hand, **Export**, and drop the JSON in the folder.
+
+### How they get to the slaves
+
+They are baked into the **master's** firmware at codegen and pushed over the
+sync bus — so adding a pattern is one file plus a reflash of the master. The
+slaves need no filesystem, no upload step and no reflash at all.
+
+| | |
+| --- | --- |
+| `pattern_delay` | **30 s by default, and the number that matters.** The master is the only board with Wi-Fi, so it is up and talking while the slaves are still bringing up PSRAM, three SPI panels and LVGL. A pattern pushed into that window is simply not heard — and unlike the time, which repeats every second, a missed pattern stays missed |
+| `pattern_repeat` | 5 min. A board rebooted, or plugged in, after the wall was already running picks the patterns up on its own |
+
+**Only the master is ever reflashed.** It is the one board with `wifi:` and
+`ota:`, so `esphome run` sends a new set over the network — no USB, no opening
+the frame — and thirty seconds later every listener has them. The slaves carry
+no network stack precisely so they never need one, and patterns are the thing
+you actually iterate on: the mode you would otherwise be reflashing eight boards
+to try.
+
+Two extra line types share the bus, one per clock rather than one per pattern:
+
+```
+CCPN <slot> <name>
+CCPC <slot> <clock> <h0> <h1> <dir0> <dir1> <v0> <v1>     ×24
+```
+
+Per clock keeps every line inside the same small RX buffer the time uses, and
+means a lost byte costs one clock rather than a whole pattern — the next repeat
+quietly repairs it. The master dribbles **two lines per `loop()`**, so a 25-line
+pattern is out in well under a second while never holding the bus long enough to
+delay a time packet.
+
+A pattern is only drawn once **all 24 clocks have arrived**; until then that
+slot falls back to showing the time, which is honest rather than blank.
+
+### Editing them from Home Assistant
+
+The folder is the *starting point*, not the authority. With `api:` on, the
+master can expose the patterns and the rotation as entities and both become
+editable while it runs — no reflash at all, not even of the master.
+
+| Entity | |
+| --- | --- |
+| `Pattern 1…8` | `text`, read **and** write. Its state is the pattern that is loaded, so copying the string copies the pattern — between slots, or between walls |
+| `Cycle modes` | `text`. `birds,temp,wave,temp,pattern` — order and repeats are meaningful, so listing `temp` every other entry gives it half the slots |
+| `Cycle interval` | `select`, 1…60 min. The 35 s window itself is fixed; only the cadence is yours |
+| `Reload patterns from firmware` | `button`. Throws away runtime edits and restores the folder — the way out of a bad one |
+
+These are stock `template` entities in the master's YAML rather than a custom
+platform, so they can be renamed, dropped or added to without touching this
+component. See
+[`board_d.yaml`](../../digital_clock_clock_24_24_round_screens/board_d.yaml).
+
+Three things make this work:
+
+- **A pattern fits a text entity, because it is packed.** JSON is ~5 kB and a
+  Home Assistant text entity holds 255 characters. Packed it is five bytes per
+  clock — angle in 1.5° steps, direction in two bits, speed as a percent — so
+  120 bytes, **164 characters** of base64 including the name. The 1.5° step is
+  ten times finer than the editor's 15° snap, so nothing you can author is
+  lost. `tools/clockclock24-sim` emits exactly this string from **Copy for
+  ESPHome**.
+- **Edits are saved to flash.** The wall keeps its patterns with Home Assistant
+  switched off, which matters more here than usual: the whole design rests on
+  the seven slaves needing nothing but power and a wire, and a master that came
+  up blank after a reboot would quietly undo that. Written only on change, so
+  NVS is not worn out by republishing.
+- **Only the master is involved.** The cycle list and interval are read by the
+  picker, which is the master, so they never go on the wire and no slave needs
+  anything. A pattern write re-pushes immediately rather than waiting out
+  `pattern_repeat` — an edit you cannot see for five minutes is an edit you
+  will assume failed.
+
+### What is not on the wire
+
+The editor lets a speed be written as *"the same as my neighbour, ±"* so a
+gradient can be authored by setting one clock. That is resolved at **codegen**,
+in Python — chains followed, cycles broken, everything clamped — and the
+firmware only ever sees plain numbers. Walking a graph and breaking its cycles
+is not work worth shipping to eight microcontrollers.
+
+### Why a pattern cannot break the wall
+
+Every hand is `pose + dir × speed × rate × t`. That is continuous for *any*
+data whatsoever, so a pattern cannot make a hand jump however badly it was
+authored — which is what makes it safe to take this mode's input from a text
+file at all.
 
 ## Resolution
 

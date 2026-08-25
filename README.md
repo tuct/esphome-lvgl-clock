@@ -94,5 +94,7 @@ between the minutes — `rotate_left`, `flying_birds`, `wave`, `spiral`, `wind`,
 style, with the hardware tables.
 → [**`examples/`**](./examples) — ready-to-flash configs and the shared board
 and panel packages they include.
-→ [**`tools/clockclock24-sim`**](./tools/clockclock24-sim) — the choreography
-engine in a browser, for designing new modes without a flash cycle.
+→ [**`tools/clockclock24-sim`**](./tools/clockclock24-sim) — the same engine in
+a browser. Design a choreography without a flash cycle, or draw a **motion
+pattern** in its editor, export it, and push it to a whole 24-screen wall by
+reflashing only the master over Wi-Fi.

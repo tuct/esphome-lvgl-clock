@@ -99,18 +99,6 @@ guessing is slow. **Press `Edit`** and pose the wall directly instead:
 Entering edit mode pauses the animation, since otherwise the choreography
 overwrites what you just posed.
 
-### Getting a pose back out
-
-`Copy JS` and `Copy CPP` put the current 48 angles on the clipboard and in the
-box below the buttons.
-
-- **JS** is `[row][col]` on the 8 × 3 wall — the way a full-wall picture reads,
-  and what a sandbox mode wants.
-- **C++** is clock-index order (`digit * 6 + cell`), formatted to drop straight
-  in beside `FONT` and `LOVE` in `lvgl_clock.cpp`.
-
-`PARK` is emitted by name in both, not as `225`.
-
 ## `rotating_maze`
 
 A chevron per clock, alternating by **column** — even columns point down
@@ -412,12 +400,17 @@ The lags are written in **degrees** and divided by the rate, not stored as
 delays — so the look is tuned by the angle you want between neighbours, and
 stays correct when `MIRROR_TURN_S` changes.
 
-## `pattern` — the pattern editor
+## `pattern` — Motion Pattern Editor Mode
 
 A mode with no code of its own: **24 per-clock motion specs you build in the
-UI**. Pick the `pattern` mode, press **Edit**, and a *Pattern* card appears —
-it is hidden otherwise, since every control writes into the selected clock and
-there is no selection when you are not editing.
+UI**. It is listed as **Motion Pattern Editor Mode** and gets the full width of
+the mode grid, because it is not a choreography like the others. Selecting it
+turns on Edit and Play, and a *Pattern* card appears —
+the card is hidden otherwise, since every control writes into the selection and
+there is nothing selected when you are not editing.
+
+It carries no `*` marker: an editor is not something that could ever be ported
+to the firmware, so the note would be telling you nothing.
 
 Each clock carries:
 
@@ -498,9 +491,26 @@ offset -0.30 ->  1.00 0.70 0.40 0.10 0.00 0.00 0.00 0.00
 ```
 
 The usable range for a gradient that spans the wall is therefore about
-**±1/7 ≈ ±0.14**, so the slider is capped at ±0.2 in steps of 0.01 rather than
-spanning ±1 — at the old range the entire useful zone was a few pixels of
-travel. Both speed readouts are in **°/s**, since 0…1 means nothing on its own.
+**±1/7 ≈ ±0.14**, which is why the slider does not span ±1 — at that range the
+entire useful zone was a few pixels of travel.
+
+### The speed sliders are squared
+
+`speed = position²`, and the offset likewise with its sign kept. A linear
+0…1 slider spends nine tenths of its travel above 9 °/s — the range you rarely
+want — and gives the slow end, where a pattern actually reads, almost nothing:
+
+| slider | speed |
+| --- | --- |
+| 0.10 | 0.9 °/s |
+| 0.20 | 3.6 °/s |
+| 0.30 | 8.1 °/s |
+| 0.50 | 22.5 °/s |
+| 1.00 | 90 °/s |
+
+Half the travel now covers 0–22 °/s. Both readouts are in **°/s** rather than a
+0…1 fraction — with a decimal below 10 °/s, where a whole degree is a visible
+difference — so the curve is invisible in use: you aim at the number you want.
 
 **Chains can loop** — A takes B's speed and B takes A's. That resolves to 0 and
 stops rather than recursing forever, so a mistake costs you a still clock, not
@@ -508,13 +518,69 @@ a hung tab.
 
 ### Copying
 
-**Copy** takes the selected clock's pose *and* motion; then **Paste** to one
-clock, **its row**, **its column**, or **all 24**. Building a wall usually
+**Copy** takes the selected clock's pose *and* motion; then **Paste** to the
+selection, **its row**, **its column**, or **all 24**. Building a wall usually
 means posing one clock, giving it the motion you want, and pasting it out —
 then going back to the few that differ.
 
-**Copy JS** exports all 24 as an annotated array, one clock per line with its
-column and row, ready to paste into `engine.js` as a fixed mode.
+**Shift-click selects more than one, and every edit applies to all of them** —
+directions, both speeds, dragging a hand, and Paste. Shift never starts a drag:
+you are choosing targets, not posing.
+
+The **primary** clock keeps a brighter ring; the rest of the selection is
+dimmer. The primary is only which clock the controls *read* their current
+values from — there has to be one, or a selection whose members disagree could
+not display anything. Writes always go to the whole set. Shift-clicking a
+selected clock removes it again, unless it is the last one left.
+
+Dragging with several selected puts **the same absolute angle** on all of them,
+which is how you set a row to a common pose in one drag.
+
+**The clipboard is never cleared.** Copy once, then paste as many times and to
+as many selections as you like; the note under the buttons says it is still
+holding it.
+
+### Save and load
+
+Two buttons, one box, under **Save / load** in the Pattern column:
+
+| | |
+| --- | --- |
+| **Export** | The whole configuration — home pose *and* motion, per clock — as JSON. Written into the box and onto the clipboard |
+| **Load** | Reads a configuration back out of that box. Press it once to open an empty box, paste, press again |
+| **Copy for ESPHome** | The same pattern **packed** for a Home Assistant text entity — `<name>:<base64>`, about 164 characters. Paste it into `Pattern 1…8` on the master and the whole wall has it within a second, with nothing reflashed |
+
+
+Export/Load round-trips: `Export`, `reset`, `Load` gives back the same poses,
+directions and speeds, relative references included.
+
+Loading **validates and coerces rather than trusts** — this is text a human has
+been editing, and a bad field should cost you one wrong clock, not a wall of
+`NaN` that silently draws nothing. Angles are wrapped, speeds clamped,
+directions reduced to −1/0/+1, an unknown neighbour name falls back to `left`,
+and the whole thing is refused with a readable reason if the shape is wrong:
+
+```
+"not json"            -> not valid JSON — JSON Parse error: …
+"{}"                  -> no `clocks` array in there
+'{"clocks":[1,2,3]}'  -> expected 24 clocks, found 3
+```
+
+A load re-cuts every anchor from the loaded poses, so the wall starts from what
+you saved rather than from wherever the motion clock happens to be.
+
+### The ESPHome form
+
+JSON is ~5 kB; a Home Assistant text entity holds 255 characters. **Copy for
+ESPHome** packs the same pattern into five bytes per clock — angle in 1.5°
+steps, direction in two bits, speed as a percent — so 120 bytes, 164 characters
+of base64. The 1.5° step is ten times finer than the 15° snap you author at, so
+nothing is lost.
+
+Relative speeds are **resolved first**: the firmware only ever sees numbers.
+The encoder mirrors `PatternStore::to_text()` in the component byte for byte,
+which is the same discipline as the rest of this sandbox — one implementation,
+translated, not two that drift.
 
 ### Home pose vs runtime anchor
 
@@ -534,12 +600,14 @@ put, the anchor moves to 162°, and **home is still 90°**.
 you chose. **Pose from wall** is its opposite: take wherever the hands have got
 to and make *that* home.
 
-Both are **disabled while the motion is running** — they rewrite poses, which
-only makes sense against a still wall; against a moving one you would be aiming
-at a moving target and could not see the result. Pause, or untick `run motion
-while editing`, and they light up. With the motion off the loop is not ticking,
-so both push the pattern into the frame by hand rather than waiting for a
-redraw that will not come.
+**Back to pose works whether or not the wall is moving.** It re-cuts every
+anchor from home, so the hands land on what you configured and carry on from
+there — a resync mid-run, not a stop. **Pose from wall** is disabled while the
+motion runs, because it captures whatever is on screen and against a moving
+wall that is whatever instant you happened to click.
+
+With the motion off the loop is not ticking, so both push the pattern into the
+frame by hand rather than waiting for a redraw that will not come.
 
 ## `test` — the scratch bench
 
