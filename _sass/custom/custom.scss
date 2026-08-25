@@ -38,3 +38,34 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+
+// ---- the front page demo ---------------------------------------------------
+// A live wall above the content on the home page. Sized by aspect ratio rather
+// than by height so it stays 8:3 - the wall's own proportions - at any width.
+.cc-demo {
+  margin: 0 0 2rem;
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 8 / 3;
+    background: #000;
+    border-radius: 8px;
+  }
+}
+
+.cc-demo-caption {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.85;
+
+  // The mode name changes every few seconds; a fixed-width slot stops the link
+  // beside it jumping around as the name gets longer or shorter.
+  #cc-demo-mode {
+    display: inline-block;
+    min-width: 8em;
+    font-family: monospace;
+  }
+}

@@ -13,10 +13,10 @@
 #
 # Enable at Settings -> Pages -> Deploy from a branch -> main -> / (root).
 
-title: ESPHome LVGL Clock
+title: Digital Clock Clock 24
 description: >-
-  A clock widget for ESPHome's LVGL, and a physical ClockClock 24 built out of
-  it - 24 round screens, eight boards, one wire.
+  A physical ClockClock 24 - a digital clock built from 24 little analogue ones,
+  on 24 round screens and eight ESP32s, driven by ESPHome.
 remote_theme: just-the-docs/just-the-docs
 
 plugins:
@@ -58,8 +58,10 @@ defaults:
   # HTML with no theme at all - the site would build and look broken.
   - scope: { path: "" }
     values: { layout: default }
+  # The front page gets a layout that injects the live demo - see
+  # _layouts/home.html for why it is not in README.md itself.
   - scope: { path: "README.md" }
-    values: { title: "Home", nav_order: 1 }
+    values: { title: "Home", nav_order: 1, layout: home }
   - scope: { path: "modes.md" }
     values: { title: "Modes", nav_order: 2 }
   - scope: { path: "digital_clock_clock_24_24_round_screens/README.md" }

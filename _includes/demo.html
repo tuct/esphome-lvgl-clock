@@ -1,0 +1,82 @@
+{%- comment -%}
+  A live ClockClock 24, cycling its choreographies, driven by the SAME engine
+  the firmware uses - engine.js and wall.js are loaded straight from the
+  sandbox, not copied. If a mode changes there it changes here.
+{%- endcomment -%}
+<div class="cc-demo">
+  <canvas id="cc-demo-canvas" width="1280" height="480" aria-label="A ClockClock 24 wall running its choreographies"></canvas>
+  <p class="cc-demo-caption">
+    <span id="cc-demo-mode">time</span> —
+    <a href="{{ '/tools/clockclock24-sim/' | relative_url }}"><strong>open the sandbox &amp; pattern editor →</strong></a>
+  </p>
+</div>
+
+<script src="{{ '/tools/clockclock24-sim/engine.js' | relative_url }}"></script>
+<script src="{{ '/tools/clockclock24-sim/wall.js' | relative_url }}"></script>
+<script>
+(function () {
+  var C = window.CC;
+  var cv = document.getElementById("cc-demo-canvas");
+  if (!C || !cv || !cv.getContext) return;      // no engine, no demo - fail quiet
+  var ctx = cv.getContext("2d");
+
+  var wall = new C.Wall();
+  wall.transitionMs = 3000;
+  var now = performance.now();
+  var d = new Date();
+  wall.setDigits([Math.floor(d.getHours() / 10), d.getHours() % 10,
+                  Math.floor(d.getMinutes() / 10), d.getMinutes() % 10], now);
+
+  // The showreel. `time` between each so the sweep into and out of a
+  // choreography is on show too - that transition is half the point.
+  var REEL = ["time", "wave", "time", "wind", "rotating_maze", "time",
+              "zipper", "mirror_wave", "time", "spiral", "love"];
+  var HOLD_MS = 9000;
+  var at = 0, nextAt = now + 4000;
+
+  function drawClock(cx, cy, r, a0, a1) {
+    var w = Math.max(2, r / 8);
+    ctx.strokeStyle = "#fff"; ctx.fillStyle = "#fff";
+    ctx.lineWidth = w; ctx.lineCap = "butt";
+    [a0, a1].forEach(function (a) {
+      var rad = (a - 90) * Math.PI / 180;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(rad) * r, cy + Math.sin(rad) * r);
+      ctx.stroke();
+    });
+    ctx.beginPath(); ctx.arc(cx, cy, w / 2, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function render() {
+    var W = cv.width, H = cv.height;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    var gap = 22;
+    var cell = Math.min((W - gap * 3 - 40) / C.WALL_COLS, (H - 40) / C.WALL_ROWS);
+    var r = cell * 0.46;
+    var total = cell * C.WALL_COLS + gap * 3;
+    var x0 = (W - total) / 2 + cell / 2, y0 = (H - cell * C.WALL_ROWS) / 2 + cell / 2;
+    for (var c = 0; c < C.NUM_CLOCKS; c++) {
+      var p = C.wallPos(c);
+      drawClock(x0 + p.col * cell + Math.floor(p.col / 2) * gap, y0 + p.row * cell, r,
+                wall.cur[c * 2], wall.cur[c * 2 + 1]);
+    }
+  }
+
+  var last = performance.now();
+  function loop(t) {
+    var dt = Math.min((t - last) / 1000, 0.1);   // a backgrounded tab must not leap
+    last = t;
+    if (t >= nextAt) {
+      at = (at + 1) % REEL.length;
+      nextAt = t + HOLD_MS;
+      wall.setMode(REEL[at], t);
+      document.getElementById("cc-demo-mode").textContent = REEL[at];
+    }
+    wall.frame(t, dt);
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>

@@ -1,0 +1,15 @@
+---
+layout: default
+---
+{%- comment -%}
+  The site's front page: just-the-docs' default layout with a live demo of the
+  wall dropped in above the content.
+
+  It lives here rather than in README.md because GitHub sanitises <script> and
+  <iframe> out of Markdown - an embedded demo would be invisible in the repo
+  view and would leave dead markup in the file. This way README.md stays plain
+  Markdown that reads correctly in both places, and only the site gains the
+  demo.
+{%- endcomment -%}
+{% include demo.html %}
+{{ content }}
