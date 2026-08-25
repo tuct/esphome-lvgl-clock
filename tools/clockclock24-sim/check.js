@@ -13,6 +13,7 @@
 var window = {};
 load("engine.js");
 load("wall.js");
+load("pattern.js");
 var C = window.CC;
 
 var FPS = 30, DT = 1 / FPS;
@@ -52,6 +53,18 @@ function run(mode, transitionMs, modeSpeed, expectJump) {
   return worst;
 }
 function pad(s, n) { s = String(s); while (s.length < n) s += " "; return s; }
+
+// A blank pattern is 24 still clocks, which proves nothing - give it motion so
+// the check actually exercises it.
+(function seedPattern() {
+  var P = C.pattern;
+  for (var i = 0; i < C.NUM_CLOCKS; i++) {
+    var s = P.get(i);
+    s.a0 = 0; s.a1 = 180; s.dirA = 1; s.dirB = -1;
+    s.spdA = (i === 0) ? {mode:"fixed", v:1} : {mode:"rel", from:"left", d:-0.05};
+    s.spdB = (i === 0) ? {mode:"fixed", v:1} : {mode:"rel", from:"left", d:-0.05};
+  }
+})();
 
 var modes = [];
 for (var k in C.MODES) if (k !== "time") modes.push(k);

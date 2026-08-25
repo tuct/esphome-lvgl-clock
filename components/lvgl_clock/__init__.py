@@ -97,6 +97,7 @@ MODES = {
     "temp": ClockMode.CC_MODE_TEMP,
     "rotating_maze": ClockMode.CC_MODE_ROTATING_MAZE,
     "zipper": ClockMode.CC_MODE_ZIPPER,
+    "mirror_wave": ClockMode.CC_MODE_MIRROR_WAVE,
 }
 
 # The choreographies `cycle_modes:` may step through - the idle animations only.
@@ -688,3 +689,4 @@ _love = _register_mode_action("lvgl_clock.love", MODES["love"])
 _temp = _register_mode_action("lvgl_clock.temp", MODES["temp"])
 _rotating_maze = _register_mode_action("lvgl_clock.rotating_maze", MODES["rotating_maze"])
 _zipper = _register_mode_action("lvgl_clock.zipper", MODES["zipper"])
+_mirror_wave = _register_mode_action("lvgl_clock.mirror_wave", MODES["mirror_wave"])

@@ -54,7 +54,7 @@ logger:
 # the credentials and the SNTP dependency. The cost is that the slave is
 # flashed over USB.
 external_components:
-  - source: ../../components
+  - source: ../components
     components: [lvgl_clock]
 
 # marker only - enables the lvgl_clock widget, takes no options itself.

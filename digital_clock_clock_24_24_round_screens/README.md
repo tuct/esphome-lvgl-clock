@@ -1,5 +1,9 @@
 # digital_clock_clock_24 — the path to this project
 
+[![ClockClock 24 — the full 24-screen wall running](https://img.youtube.com/vi/BnIoumtDO5s/maxresdefault.jpg)](https://www.youtube.com/watch?v=BnIoumtDO5s)
+
+*↑ The finished 24-screen wall, running. [Watch it](https://www.youtube.com/watch?v=BnIoumtDO5s).*
+
 Years ago I stumbled on [ClockClock 24](https://clockclock.com/) by Humans
 since 1982 and immediately fell in love with the concept: a digital clock made
 out of 24 analogue clocks. Genius.
@@ -39,35 +43,40 @@ by **8 XIAO ESP32-S3 boards with 3 panels each**. Every board runs the same
 construction.
 
 One board has Wi-Fi and SNTP and broadcasts the time over a one-wire UART bus;
-the other seven listen. The master drives three panels too — it is board C, not
+the other seven listen. The master drives three panels too — it is board D, not
 a ninth box.
 
-> **Status:** running on hardware — 12 of the 24 clocks built. See
-> [First prototype](#first-prototype).
+> **Finished wall:** ≈ **27 × 13 cm** and **730 g** — light enough to hang on
+> two screws.
 >
-> **Cost:** roughly **€206–€376** for the full 24-clock wall — the spread is
+> **Status:** running on hardware — **all eight boards built**, the full
+> 24-clock wall. [Watch it run](https://www.youtube.com/watch?v=BnIoumtDO5s) · see
+> [First full build](#first-full-build), and [`PROTOTYPE.md`](./PROTOTYPE.md)
+> for how it got there.
+>
+> **Cost:** roughly **€207–€376** for the full 24-clock wall — the spread is
 > almost entirely where you buy the XIAOs. See [BOM and cost](#bom-and-cost).
 
-## First prototype
+## First full build
 
-Twelve of the twenty-four clocks running — four boards, four wall columns:
+All eight boards, all 24 clocks, in a printed case.
 
-<img src="./images/PXL_20260819_174757600.MP.jpg" width="100%">
+[**Watch it run**](https://www.youtube.com/watch?v=BnIoumtDO5s) — the digit sweeps and the choreographies, at speed.
 
-The back of the same panel. Four carrier boards, each holding a XIAO and three
-round displays, chained left to right:
+<img src="./images/half_screens_testing.jpg" width="100%">
 
-<img src="./images/PXL_20260819_174813709.MP.jpg" width="100%">
+Front on, mid-test: all 24 panels mounted, four columns driven. The case is one
+printed part with 24 round cutouts; the panels sit behind it so only the round
+glass shows.
 
-The chain close up. Four wires hop from board to board — `+5 V`, `GND`, `+3.3 V`
-and the sync `UART` — and **most of the `MP1584EN` footprints are empty**:
+<img src="./images/screens_in_case.jpg" width="100%">
 
-<img src="./images/PXL_20260819_174807957.MP.jpg" width="100%">
+The same case from behind, with all 24 panels seated — eight rows of three, one
+row per carrier board. Each panel's 8-pin header points inwards, ready for the
+carrier to drop onto it.
 
-On the bench before mounting, with the GC9A01A panels dry-fitted above their
-carriers:
-
-<img src="./images/PXL_20260818_232322630.MP.jpg" width="100%">
+All eight carriers then push onto those headers and chain together — see
+[step 11](#hardware-assembly).
 
 ## What you need
 
@@ -89,12 +98,12 @@ a quote.
 | 4-way chain cable — housing, crimps, wire | 7 | 0.7&nbsp;–&nbsp;1.6 | 5&nbsp;–&nbsp;11 | one per hop between boards |
 | 8-pin female header 2.54 mm — `U3`/`U4`/`U5` | 24 | 0.2&nbsp;–&nbsp;0.4 | 5&nbsp;–&nbsp;10 | one per panel; or cut from 40-pin strips |
 | 7-pin female header 2.54 mm — `U6` | 16 | 0.2&nbsp;–&nbsp;0.4 | 3&nbsp;–&nbsp;6 | the XIAO socket, 2 × 7; also cut from strips |
-| 100 nF 0805 — `C1`–`C3` | 0&nbsp;–&nbsp;24 | <&nbsp;0.1 | 0&nbsp;–&nbsp;2 | **Optional**, recommended. **The only SMD part** — sold in 100-packs |
-| 220 µF electrolytic — `C4`, `C6` | 0&nbsp;–&nbsp;16 | 0.1&nbsp;–&nbsp;0.3 | 0&nbsp;–&nbsp;5 | **Optional**, recommended. Bulk on the 5 V rail; through-hole, 6.3 mm |
-| 100 µF electrolytic — `C5` | 0&nbsp;–&nbsp;8 | 0.2&nbsp;–&nbsp;0.4 | 0&nbsp;–&nbsp;3 | **Optional**, recommended. Bulk on the 3.3 V rail; through-hole, 6.3 mm |
+| 100 nF 0805 — `C1`–`C3` | 24 | <&nbsp;0.1 | 1&nbsp;–&nbsp;2 | **All 24 fitted** on the built wall. **The only SMD part** — sold in 100-packs |
+| 220 µF electrolytic — `C4`, `C6` | 0&nbsp;–&nbsp;16 | 0.1&nbsp;–&nbsp;0.3 | 0&nbsp;–&nbsp;5 | **Optional** — **none fitted** on the built wall. Bulk on the 5 V rail; through-hole, 6.3 mm |
+| 100 µF electrolytic — `C5` | 1&nbsp;–&nbsp;8 | 0.2&nbsp;–&nbsp;0.4 | 0&nbsp;–&nbsp;3 | **One** was enough for the whole wall. Bulk on the 3.3 V rail; through-hole, 6.3 mm |
 | 5 V 2 A USB supply | 1 | 0&nbsp;–&nbsp;15 | 0&nbsp;–&nbsp;15 | one for the whole wall; €0 if you have one |
 | [3D-printed frame](#3d-printed-frame) | 1 | 5&nbsp;–&nbsp;15 | 5&nbsp;–&nbsp;15 | filament only, if you print it yourself |
-| **Total** | | | **€&nbsp;206&nbsp;–&nbsp;376** | |
+| **Total** | | | **€&nbsp;207&nbsp;–&nbsp;376** | |
 
 **Where the money goes.** The panels are the floor — €118 of it, and there is
 no way around 24 displays. The one real decision is the **XIAO**: buying
@@ -109,12 +118,19 @@ the pack price once and keep the remainder. So the small rows are what those
 parts *cost you here*, not what you will spend at the checkout — expect a few
 euro more and a drawer of spares.
 
-**The capacitors are optional.** The boards work with none of them fitted,
-which is why they carry a `0` low bound above. Fit them anyway if
-you can: `C1`–`C3` sit on the panel headers and `C4`–`C6` on the two rails, and
-they are what keeps 24 backlights striking at once from browning out the SPI
-bus. Skipping them is a reasonable first-board shortcut, not the finished
-build.
+**What the built wall actually has fitted**, which is less than the table
+allows for:
+
+- **All 24 × 100 nF** (`C1`–`C3`, one per panel header). These are the ones
+  worth having — they sit right at the panels and cost almost nothing.
+- **One 100 µF** on the 3.3 V rail, for the whole wall rather than one per
+  board.
+- **No 220 µF at all.** `C4` and `C6` are empty on every board.
+
+That runs fine, so treat the `0` low bounds in the table as real rather than
+theoretical. The reasoning holds: bulk on the rails is there to stop 24
+backlights striking at once from dragging the supply down, and one bulk cap
+near the single regulator does that as well as sixteen spread along the chain.
 
 Three things that are *not* eight-off, and are easy to over-order:
 
@@ -143,7 +159,7 @@ carrier: solder a board, plug the XIAO into it, confirm all three screens come
 up, then move that XIAO to the next board. Eight boards assembled and only then
 powered is eight boards to debug at once.
 
-**Build board C first — it is your test rig.** C is the master *and* the
+**Build board D first — it is your test rig.** D is the master *and* the
 regulator board: it is the only one with `wifi:`, and it carries the `U7`
 MP1584 and the 5 V input. That is deliberate — the middle of the row, so the 3.3 V it makes has at most four boards to reach in either
 direction. That module is the *only* source of the 3.3 V the panels run on: a
@@ -167,12 +183,12 @@ headers **empty**, turn the trimmer until pin 2 of a panel header reads 3.3 V,
 then fit the panels. Getting this wrong once costs three displays.
 
 **3. Flash one XIAO as the master and test three screens.** Do this on the
-board you fitted the MP1584 to: `board_c.yaml` is the only config that brings
+board you fitted the MP1584 to: `board_d.yaml` is the only config that brings
 up Wi-Fi and SNTP, so that one board needs nothing else — no bus, no second
 board:
 
 ```bash
-esphome run board_c.yaml
+esphome run board_d.yaml
 ```
 
 All three panels should light, the right way up, sweep to 12 together during
@@ -215,7 +231,7 @@ frame.
 middle. The diagram and the per-hop detail are in [Wiring](#wiring) below.
 
 **7. Run the whole wall on the bench, before anything goes into the frame.**
-Flash all eight (`board_c.yaml` over the network, the rest over USB), chain
+Flash all eight (`board_d.yaml` over the network, the rest over USB), chain
 them, and power the middle. Everything up to here has been tested
 two boards at a time; this is the first time the wall is a wall, and it is far
 easier to fix flat on a table than screwed to a frame.
@@ -235,10 +251,51 @@ What to look for, in order:
   proves the column ordering and the shared animation clock end to end. If the
   wave arrives at a column out of turn, that board has the wrong indices.
 
-**8. Mount board by board.** Fit a carrier and its three panels to the printed
-frame, seat the panels on their rods, and fix them — hot glue is enough — then
-move on to the next board. A column at a time means a panel that turns out to
-be dead is still reachable.
+**8. Prove every panel works before any of it is glued.** Hot glue is not
+meant to come back out, so a panel that turns out to be dead after mounting is
+a real problem. Walk a carrier along and light all 24 first — three at a time,
+watching for a panel that stays dark, comes up the wrong way round, or shows
+tearing. Steps 3 to 7 already do most of this; the point here is that **no
+panel goes into the case until you have seen it draw a clock.**
+
+**9. Fit the panels into the printed case — and check the orientation.** The
+case is one printed part with 24 round cutouts; the panels sit behind it so
+only the round glass shows through. Every panel goes in **the same way round,
+with its driver IC at the top**:
+
+<img src="./images/screens_in_case.jpg" width="100%">
+
+Eight rows of three, one row per carrier board. Orientation is the mistake to
+watch for: a round panel mounted a quarter-turn out puts that clock's 12 where
+its 3 should be, and nothing in the config can correct it per panel — the whole
+board shares one `rotation:`. It is also invisible until the hands move,
+because a round display looks identical whichever way up it is.
+
+**10. Glue them in.** Hot glue is enough — a bead at two or three points on
+each panel's edge, not over the header:
+
+<img src="./images/screens_one_pcb.jpg" width="100%">
+
+Each panel's 8-pin header points inwards so a carrier lands straight onto its
+three. Lay one bare carrier on before gluing the rest of a row, to check the
+fit.
+
+**11. Push the finished carriers onto the panels and wire the chain.** Each
+carrier presses onto the three headers of its row; then one cable per hop, all
+the way along, as in [Wiring](#wiring):
+
+<img src="./images/screens_and_pcb_in_case.jpg" width="100%">
+
+**Note this is PCB v1.0.** Its pass-through is a pair of **3-pin** headers, so
+the chain is two runs — the red/blue pairs carrying `GND`, `+5 V` and `UART`,
+and the separate yellow lead carrying `+3.3 V` the length of the wall. **v1.1,
+the revision in [`PCB/`](./PCB), replaces both with a single 4-pin XH per
+hop**, so a finished board of that revision has one cable in and one out and
+nothing else.
+
+What the photo does show, and still holds on v1.1: **only one `MP1584EN` is
+fitted** for the whole wall — the other seven footprints are empty, exactly as
+[How many regulators](#how-many-regulators-and-where) describes.
 
 > **Powering over USB-C rather than `U8`? Use a right-angle USB-C cable.** A
 > straight plug does not clear the frame.
@@ -252,34 +309,34 @@ and the sync bus in one run:
 ```
    4-pin XH chain cable:  +3.3 V . GND . +5 V . UART     7 cables, 8 boards
 
-         5 V IN — XH-2 on U8, or a
-       90-degree USB-C into C's XIAO
-                     |
-                     v
+                 5 V IN — XH-2 on U8, or a
+               90-degree USB-C into D's XIAO
+                             |
+                             v
   +-----+ +-----+ +-----+ +-----+ +-----+ +-----+ +-----+ +-----+
   |  A  | |  B  | |  C  | |  D  | |  E  | |  F  | |  G  | |  H  |
   +----o+-+o---o+-+o---o+-+o---o+-+o---o+-+o---o+-+o---o+-+o----+
    col 0   col 1   col 2   col 3   col 4   col 5   col 6   col 7
 
-   C = master (Wi-Fi), the MP1584, and 5 V in   o = CN1 / CN3, 4-pin XH
-   D = a 2nd MP1584, only if you fit one        end boards use only one
+   D = master (Wi-Fi), the MP1584, and 5 V in   o = CN1 / CN3, 4-pin XH
+   C = a 2nd MP1584, only if you fit one        end boards use only one
 ```
 
 - **One cable per hop, seven in total.** The two end boards leave one
   connector unpopulated. One board is one wall column, left to right, and its
   three panels are that column top to bottom.
-- **Feed the middle, not an end** — board C or D. That keeps every run to four
+- **Feed the middle, not an end** — board D or C. That keeps every run to four
   boards or fewer, which is the length actually measured
   ([0.01 V of drop](#how-many-regulators-and-where)).
 - **Power enters either through `U8` or over USB-C.** The XIAO's `VBUS` pin
   sits on the same `+5 V` net, so plugging one USB supply into the middle
   board's XIAO runs the whole wall and `U8` need not be fitted at all.
-- **Board C is the master**, and the natural place for the MP1584 and the 5 V
-  feed as well — one board near the middle carrying the regulator, the power
-  input and the network. It drives `partial: 6 / 8 / 10`, its own column, like
+- **Board D is the master**, and the natural place for the MP1584 and the 5 V
+  feed as well — one board in the middle carrying the regulator, the power
+  input and the network. It drives `partial: 7 / 9 / 11`, its own column, like
   every other board.
-- **Fitting a second MP1584? Split the 3.3 V rail.** Populate `U7` on C *and*
-  D, then leave the `+3.3 V` wire out of the one cable joining them, so each
+- **Fitting a second MP1584? Split the 3.3 V rail.** Populate `U7` on D *and*
+  C, then leave the `+3.3 V` wire out of the one cable joining them, so each
   module feeds its own half of the wall. `GND`, `+5 V` and `UART` still pass
   through. Never tie the two outputs together —
   [why](#how-many-regulators-and-where).
@@ -299,17 +356,17 @@ is comfortable; across a frame with metres of cable, use RS-485 transceivers.
 ### Flash the firmware
 
 ```bash
-esphome run board_c.yaml      # master, over the network once it is on Wi-Fi
+esphome run board_d.yaml      # master, over the network once it is on Wi-Fi
 esphome run board_a.yaml      # …and the other seven, over USB
 ```
 
-Only board C has `ota:`, so the seven listeners are flashed over USB. That is
+Only board D has `ota:`, so the seven listeners are flashed over USB. That is
 the deliberate trade for having no Wi-Fi stack on them — see below.
 
 Each board gets its own hostname and build directory, so the eight builds don't
 collide.
 
-`clock_mode` is a **master-only** knob — it lives in `board_c.yaml`, because
+`clock_mode` is a **master-only** knob — it lives in `board_d.yaml`, because
 the master owns the wall's mode and the other seven follow whatever it
 broadcasts. There is nothing to set on a slave, and nothing to keep in step by
 hand. The default is `time`, which is all you need: the stock config already
@@ -321,7 +378,7 @@ rather than editing the file, and set it on the master alone; the rest of the
 wall adopts it off the bus, minute counter included:
 
 ```bash
-esphome -s clock_mode demo run board_c.yaml
+esphome -s clock_mode demo run board_d.yaml
 ```
 
 ## How to configure
@@ -365,6 +422,7 @@ the wall just tells the time.
 | `wind` | Hands stand like grass; wind bends the top row right, the bottom row left, then releases |
 | `rotating_maze` | A chevron field turning, rows counter-rotating, easing almost to a stop on each aligned figure |
 | `zipper` | A front runs across a field of diagonals, unzipping each column into mirrored chevrons |
+| `mirror_wave` | Vertical strokes scissor open, mirrored about the wall's centre, spreading outwards from the middle |
 | `love` | Spells **LOVE** across the four digits |
 | `temp` | The temperature, as `-9`…`99` plus `°C` |
 | `rotate_left` | A plain continuous rotation |
@@ -426,7 +484,7 @@ stops you making the hands amber.
 ### Timezone and temperature
 
 Both are master-only, because both travel down the sync bus to the other seven
-boards. In [`board_c.yaml`](./board_c.yaml):
+boards. In [`board_d.yaml`](./board_d.yaml):
 
 ```yaml
 time:
@@ -496,8 +554,8 @@ with the sync UART either.
 
 A carrier board — one per wall column — that takes a XIAO ESP32-S3, breaks out
 the three panel headers, regulates the panel supply and passes the sync bus and
-5 V through to the next board. Design files are in [`PCB/`](./PCB): EasyEDA Pro
-v1.0, **34 × 131.6 mm**, 2 layers.
+5 V through to the next board. Design files are in [`PCB/`](./PCB) — **board
+revision v1.1**, **34 × 131.6 mm**, 2 layers.
 
 <img src="./PCB/3D_PCB3_2026-08-19.png" width="260" align="right">
 
@@ -508,11 +566,12 @@ v1.0, **34 × 131.6 mm**, 2 layers.
 | [`Gerber_PCB3_2026-08-19.zip`](./PCB/Gerber_PCB3_2026-08-19.zip) | Gerbers + drills, ready to upload |
 | [`Netlist_Schematic3_2026-08-19.tel`](./PCB/Netlist_Schematic3_2026-08-19.tel) | Netlist |
 
-> **Revision 2026-08-19.** The pass-through connectors are now **4-pin XH**
+> **v1.1, 2026-08-19.** The pass-through connectors are now **4-pin XH**
 > carrying `+3.3 V`, `GND`, `+5 V`, `UART` — the four wires the prototype was
 > already chaining by hand off a pair of 3-pin headers. The board also lost
 > 8 mm. Nothing on the XIAO moved, so the pin map and every config are
-> unchanged.
+> unchanged — and **v1.0 boards still work**, they just need the two-run wiring
+> in the [assembly photo](#hardware-assembly).
 
 Upload the gerber zip as-is to JLCPCB or any EasyEDA-compatible fab — 2-layer,
 1.6 mm, no controlled impedance or other special process. The silkscreen has a
@@ -583,8 +642,8 @@ One board per column, so a board's three indices step by **2**, not by 1:
 | --- | --- | --- | --- | --- |
 | A | 0 | hours tens, left | 0 / 2 / 4 | listener |
 | B | 1 | hours tens, right | 1 / 3 / 5 | listener |
-| **C** | 2 | hours units, left | **6 / 8 / 10** | **master** — Wi-Fi + SNTP, MP1584, 5 V in |
-| D | 3 | hours units, right | 7 / 9 / 11 | listener |
+| C | 2 | hours units, left | 6 / 8 / 10 | listener |
+| **D** | 3 | hours units, right | **7 / 9 / 11** | **master** — Wi-Fi + SNTP, MP1584, 5 V in |
 | E | 4 | minutes tens, left | 12 / 14 / 16 | listener |
 | F | 5 | minutes tens, right | 13 / 15 / 17 | listener |
 | G | 6 | minutes units, left | 18 / 20 / 22 | listener |
@@ -616,12 +675,12 @@ So the boards worth watching on the bench are **G and H** (the minutes-units
 numeral, clocks 18–23): all six move on every demo tick, and any sync error
 between the two shows up as a single digit visibly forming in two stages.
 
-Board C, the master, is the left half of the *hours-units* numeral, which only
+Board D, the master, is the right half of the *hours-units* numeral, which only
 changes every 5 min in demo. For bring-up either borrow a minutes column,
 
 ```bash
 esphome -s clock_index_a 19 -s clock_index_b 21 -s clock_index_c 23 \
-        run board_c.yaml
+        run board_d.yaml
 ```
 
 or raise `demo_step:` (fake minutes per tick, default 1) in `common.yaml` —
@@ -648,7 +707,7 @@ show 8 different times.
 
 #### Only the master runs the boot-phase animation
 
-`board_c.yaml` has the `interval:` that spins while connecting, flies birds
+`board_d.yaml` has the `interval:` that spins while connecting, flies birds
 while waiting for NTP, then shows the time. The slaves deliberately have none:
 the mode rides the sync packet, so a slave that also decided for itself would
 fight the master once a second.
@@ -690,9 +749,9 @@ position in the 8×3 grid, so once two boards agree on the mode and the time
 they are drawing the same frame of the same figure.
 
 The list is walked **in order** and wraps, so a repeated entry comes round more
-often. **Which** choreography plays is decided in exactly one place: `dc_a` on board C,
+often. **Which** choreography plays is decided in exactly one place: `dc_a` on board D,
 the first widget listed in that board's `lvgl_clock_id`. Everything else — board
-C's other two panels included — is marked a follower, never runs
+D's other two panels included — is marked a follower, never runs
 `cycle_modes:`, and is handed the mode in the sync packet. Letting all eight
 boards pick for themselves would hold only as long as their clocks and their
 config agreed to the second; one board a second out at :10 would start a
@@ -763,7 +822,7 @@ late", while one odd panel in a column reads as "that node's wiring".
 
 ### Only the master has a network
 
-`wifi:`, `api:` and `ota:` live in `board_c.yaml` alone. The other seven take the
+`wifi:`, `api:` and `ota:` live in `board_d.yaml` alone. The other seven take the
 time off the UART and have no network stack at all, which means:
 
 - **One set of credentials on the wall**, and one board that cares whether the
@@ -818,11 +877,11 @@ part — takes without heatsinking.
 
 Two consequences worth designing around:
 
-- **Feed the chain in the middle** — board C or D — so no run is longer than
+- **Feed the chain in the middle** — board D or C — so no run is longer than
   four boards in either direction, the length already measured. It costs
   nothing but where you put the connector.
 - **A second module is optional, and if you fit one, give each its own rail.**
-  Populate `U7` on C and D, then omit the `+3.3 V` wire from the single cable
+  Populate `U7` on D and C, then omit the `+3.3 V` wire from the single cable
   between them. Paralleled trimmer-set buck modules do not share a load — the
   one set a few millivolts higher simply takes all of it — so tying the two
   outputs together makes a two-regulator wall behave worse than a
@@ -854,11 +913,11 @@ that a board file contains **only what makes that board different** — which is
 three clock indices, and on the master its network:
 
 ```
-board_c.yaml  ── THE MASTER ───────────────────────────────────┐
+board_d.yaml  ── THE MASTER ───────────────────────────────────┐
   wifi: / ota: / uart: TX / sntp / broadcaster / temp sensor   │
   └─ common.yaml                                               │
                                                                │
-board_a.yaml  ── A LISTENER (and b, d, e, f, g, h) ────────────┤
+board_a.yaml  ── A LISTENER (and b, c, e, f, g, h) ────────────┤
   three clock indices, nothing else                            │
   └─ common_slave.yaml                                         │
        uart: RX / lvgl_clock time platform / hostname          │
@@ -876,13 +935,13 @@ board_a.yaml  ── A LISTENER (and b, d, e, f, g, h) ────────�
 
 | File | What it is |
 | --- | --- |
-| `common_base_esp32_s3_xiao.yaml` | Board, PSRAM, logger, the pin substitutions, colours, heap sensors. **No network** — that lives in `board_c.yaml` |
+| `common_base_esp32_s3_xiao.yaml` | Board, PSRAM, logger, the pin substitutions, colours, heap sensors. **No network** — that lives in `board_d.yaml` |
 | `panel.yaml` | **One** panel: its LVGL instance and its single mini-clock, with every widget setting. Included three times |
 | `common.yaml` | The SPI bus, the three `display:` entries, and the three `panel.yaml` includes |
 | `common_slave.yaml` | The listener half: UART RX, the `lvgl_clock` time platform, and the hostname |
-| `board_c.yaml` | **The master.** Wi-Fi, SNTP, UART TX, the boot-phase animation, the temperature sensor, clocks 6/8/10 |
+| `board_d.yaml` | **The master.** Wi-Fi, SNTP, UART TX, the boot-phase animation, the temperature sensor, clocks 7/9/11 |
 | the other seven `board_*.yaml` | The listeners. Each is four lines: an include and its three clock indices |
-| `secrets.yaml.example` | Copy to `secrets.yaml` (gitignored). Only `board_c.yaml` reads it |
+| `secrets.yaml.example` | Copy to `secrets.yaml` (gitignored). Only `board_d.yaml` reads it |
 
 #### Two different include mechanisms, and why both are needed
 
@@ -920,14 +979,14 @@ another copy of the widget.
 | --- | --- | --- |
 | `clk_pin`, `cs_pin_a`… | `common_base_esp32_s3_xiao.yaml` | the command line, if your wiring differs |
 | `clock_index_a/b/c` | `common.yaml` (0 / 2 / 4) | every `board_*.yaml` — this is all a listener file contains |
-| `clock_mode` | `board_c.yaml` (`time`) | `-s clock_mode demo`, master only |
+| `clock_mode` | `board_d.yaml` (`time`) | `-s clock_mode demo`, master only |
 
 Because substitutions resolve at codegen, `-s` works on any of them without
 editing a file:
 
 ```bash
 esphome -s clock_index_a 19 -s clock_index_b 21 -s clock_index_c 23 \
-        run board_c.yaml
+        run board_d.yaml
 ```
 
 So a listener board file really is just its column:
@@ -953,3 +1012,9 @@ The hostname is derived from the first index inside `common_slave.yaml`
 > displays:
 >   - ${display_id}
 > ```
+
+## First prototype
+
+Twelve clocks on four boards, before any of it went into a case — the stage
+where everything is still reachable. Photos and notes in
+[**`PROTOTYPE.md`**](./PROTOTYPE.md).

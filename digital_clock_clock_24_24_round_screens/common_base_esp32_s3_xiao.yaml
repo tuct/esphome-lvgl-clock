@@ -53,13 +53,13 @@ psram:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
-# No `wifi:` / `api:` / `ota:` here on purpose - they live in board_c.yaml (the master).
+# No `wifi:` / `api:` / `ota:` here on purpose - they live in board_d.yaml (the master).
 # A slave takes the time off the UART and needs no network at all, which is the
 # whole point of the bus: one board holds the Wi-Fi credentials and the SNTP
 # dependency, the other seven are self-contained. The cost is that slaves are
 # flashed over USB.
 external_components:
-  - source: ../../components
+  - source: ../components
     components: [lvgl_clock]
 
 # marker only - enables the lvgl_clock widget, takes no options itself.

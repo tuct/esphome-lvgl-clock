@@ -304,6 +304,9 @@ void LvglClock::tick_choreography_(ClockMode m, double t) {
     case CC_MODE_ZIPPER:
       this->tick_zipper_(t);
       break;
+    case CC_MODE_MIRROR_WAVE:
+      this->tick_mirror_wave_(t);
+      break;
     default:
       break;
   }
@@ -1194,6 +1197,70 @@ void LvglClock::tick_zipper_(double t) {
   this->cc_dirty_ = true;
 }
 
+// `mirror_wave` timing, at mode_speed 1.0 - see tick_mirror_wave_().
+//
+// 180 deg of hand travel is one open-close: at 180 the two hands have swapped
+// ends and the figure is back to a vertical stroke, so it repeats with no seam.
+static const double MIRROR_TURN_S = 9.0;
+// The lags are written in DEGREES and divided by the rate below, so the look is
+// tuned by the angle wanted between neighbours rather than by a delay that has
+// to be re-derived whenever the speed changes.
+static const float MIRROR_COL_LAG_DEG = 12.0f;  // one ring to the next one out
+static const float MIRROR_ROW_LAG_DEG = 7.0f;   // extra for the top and bottom
+static const double MIRROR_RAMP_S = 1.0;        // spin-up, per clock
+// Rows 0 and 2 turn slower than the middle one, so they fall steadily further
+// behind instead of holding a fixed offset - the rows beat against each other
+// and come back into step every MIRROR_TURN_S / (1 - this), 36 s at 0.75. That
+// is the only period here longer than a single open-close, and it is what stops
+// the mode reading as a loop.
+static const double MIRROR_OUTER_RATE = 0.75;
+
+// A mirrored scissor, spreading outwards from the middle of the wall.
+//
+// Every clock rests as ONE VERTICAL STROKE - both hands on the 12-6 line - then
+// opens, the two hands parting like a pair of dividers. The wall is mirrored
+// about its centre line: the left half opens right and the right half opens
+// left, so the chevrons always point inwards at the middle. The MIDDLE ROW
+// scissors the other way from the two around it, so a column reads as three
+// alternating chevrons rather than three identical ones.
+//
+// The start spreads out from the centre: the two middle columns go first, their
+// top and bottom rows MIRROR_ROW_LAG_DEG behind, then each ring outwards one
+// MIRROR_COL_LAG_DEG behind the ring inside it. Within a row every clock then
+// turns at the same rate, so the offsets picked up on the way out are fixed - a
+// standing fan, widest in the middle, never bunching and never overtaking.
+void LvglClock::tick_mirror_wave_(double t) {
+  const double rate = 180.0 / MIRROR_TURN_S;  // deg/s, middle row, at speed
+  const double col_delay = MIRROR_COL_LAG_DEG / rate;
+  const double row_delay = MIRROR_ROW_LAG_DEG / rate;
+  const float mid = (WALL_COLS - 1) / 2.0f;   // 3.5 on an 8-wide wall
+
+  double ts = t * this->mode_speed_;
+  for (int c = 0; c < NUM_CLOCKS; c++) {
+    int col, row;
+    wall_pos_(c, col, row);
+    // Rings out from the centre: columns 3 and 4 are ring 0, 0 and 7 ring 3.
+    double ring = fabsf((float) col - mid) - 0.5f;
+    double x = ts - ring * col_delay - ((row == 1) ? 0.0 : row_delay);
+
+    double r = (row == 1) ? rate : rate * MIRROR_OUTER_RATE;
+    double turned;
+    if (x <= 0.0) {
+      turned = 0.0;  // this clock has not set off yet - still a vertical stroke
+    } else if (x < MIRROR_RAMP_S) {
+      turned = r * x * x / (2.0 * MIRROR_RAMP_S);  // spinning up
+    } else {
+      turned = r * (x - MIRROR_RAMP_S / 2.0);      // at speed
+    }
+
+    // Left half opens right, right half opens left; the middle row reverses.
+    float sign = ((col <= mid) ? 1.0f : -1.0f) * ((row == 1) ? -1.0f : 1.0f);
+    this->cur_[c * 2 + 0] = wrap360(0.0f + sign * (float) turned);
+    this->cur_[c * 2 + 1] = wrap360(180.0f - sign * (float) turned);
+  }
+  this->cc_dirty_ = true;
+}
+
 // Take the master's fake minute instead of counting our own. Resets the local
 // interval timer too, so this node does not immediately tick a second time.
 void LvglClock::adopt_demo_min(int m) {
@@ -1489,6 +1556,18 @@ void LvglClock::loop() {
         break;
       case CC_MODE_TEMP:
         this->tick_temp_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_ROTATING_MAZE:
+        this->tick_rotating_maze_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_ZIPPER:
+        this->tick_zipper_(choreo_t);
+        this->blend_into_mode_();
+        break;
+      case CC_MODE_MIRROR_WAVE:
+        this->tick_mirror_wave_(choreo_t);
         this->blend_into_mode_();
         break;
       case CC_MODE_DEMO:

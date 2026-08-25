@@ -106,8 +106,11 @@ enum ClockMode {
   // A field of diagonals with a front running across it left to right, which
   // unzips each column into a pair of mirrored chevrons and does it up behind.
   CC_MODE_ZIPPER,
+  // Every clock rests as one vertical stroke and scissors open, mirrored about
+  // the wall's centre line, spreading outwards from the middle.
+  CC_MODE_MIRROR_WAVE,
   // Keep last: the sync platform validates incoming modes against this.
-  CC_MODE_LAST = CC_MODE_ZIPPER,
+  CC_MODE_LAST = CC_MODE_MIRROR_WAVE,
 };
 
 // Mode name for logs. The wire format is an integer, and "mode 5" in a log is
@@ -137,6 +140,8 @@ inline const char *clock_mode_name(ClockMode m) {
       return "rotating_maze";
     case CC_MODE_ZIPPER:
       return "zipper";
+    case CC_MODE_MIRROR_WAVE:
+      return "mirror_wave";
   }
   return "unknown";
 }
@@ -474,6 +479,7 @@ class LvglClock : public Component, public lvgl::LvCompound {
   void tick_temp_(double t);
   void tick_rotating_maze_(double t);
   void tick_zipper_(double t);
+  void tick_mirror_wave_(double t);
   // The animation time base: seconds, monotonic, smooth, and phase-aligned
   // with every other node on the wall.
   //
@@ -520,7 +526,8 @@ class LvglClock : public Component, public lvgl::LvCompound {
   static bool is_idle_animation_(ClockMode m) {
     return m == CC_MODE_ROTATE_LEFT || m == CC_MODE_FLYING_BIRDS || m == CC_MODE_WAVE ||
            m == CC_MODE_SPIRAL || m == CC_MODE_WIND || m == CC_MODE_LOVE ||
-           m == CC_MODE_TEMP || m == CC_MODE_ROTATING_MAZE || m == CC_MODE_ZIPPER;
+           m == CC_MODE_TEMP || m == CC_MODE_ROTATING_MAZE || m == CC_MODE_ZIPPER ||
+           m == CC_MODE_MIRROR_WAVE;
   }
   // Starts/ends the choreography window. Called every loop.
   void update_mode_cycle_();

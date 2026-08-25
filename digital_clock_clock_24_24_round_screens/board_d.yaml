@@ -1,13 +1,138 @@
-# ClockClock 24 - board D: wall column 3, mini-clocks 7 / 9 / 11.
-# A listener. Everything else lives in common_slave.yaml.
+# ClockClock 24 - board D, wall column 3: mini-clocks 7 / 9 / 11, the right
+# column of the hours-units digit, top to bottom.
+#
+# THE MASTER. The only board on the wall with a network: it gets the time from
+# SNTP and broadcasts it down the one-wire bus once a second, so the other
+# seven boards stay in step. It drives three panels like every other board - it
+# is not a ninth box.
+#
+#   esphome run board_d.yaml
+#
+# WHY D AND NOT A. D sits in the middle of the row, which is also where the
+# MP1584 and the 5 V feed belong - so one board carries the regulator, the
+# power input and the network, and that board is the one you build and test
+# first. It is the whole wall in miniature: chain any other carrier to it with
+# a 4-pin cable and that carrier gets 3.3 V for its panels and the time, with
+# nothing else set up.
+#
+# Wiring: D1 is TX here and reaches every other board through the daisy chain,
+# in both directions. Common ground.
+
+esphome:
+  name: cc24-board-d
 
 packages:
-  slave: !include common_slave.yaml
+  node: !include common.yaml
 
 substitutions:
-#  clock_index_a: "7"
-#  clock_index_b: "9"
-#  clock_index_c: "11"
-  clock_index_a: "12"
-  clock_index_b: "14"
-  clock_index_c: "16"
+  clock_index_a: "7"     # row 0
+  clock_index_b: "9"     # row 1
+  clock_index_c: "11"    # row 2
+  # `time` = the real clock, `demo` = a fake minute every 5 s for bring-up.
+  # Master-only, because the master owns the wall's mode: it broadcasts what it
+  # is doing and the other seven boards follow, demo minute counter included.
+  # There is nothing to set on a slave. Pass it rather than editing this:
+  #   esphome -s clock_mode demo run board_d.yaml
+  clock_mode: "time"
+
+# The only networked board on the wall. The other seven carry none of this.
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+#api:
+#  encryption:
+#    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# TX only - nothing on the bus talks back.
+uart:
+  id: sync_bus
+  tx_pin: ${sync_pin}
+  baud_rate: 115200
+
+time:
+  # The master's own clock, and the widgets' `time_id`.
+  - platform: sntp
+    id: clock_time
+    timezone: "CET-1CEST,M3.5.0,M10.5.0/3"
+  # The broadcaster. `broadcast_interval` is what puts it in master role;
+  # `lvgl_clock_id` makes the idle animation mode travel with the time, so the
+  # whole wall spins/flies/shows time together.
+  #
+  # All three widgets are listed, and the order matters: the FIRST one is the
+  # wall's only picker - it runs `cycle_modes:` and its choice is what goes on
+  # the wire. The other two are marked followers and are handed the same mode,
+  # exactly as a slave board is. That way nothing on the wall, on this board or
+  # any other, ever chooses a choreography for itself.
+  - platform: lvgl_clock
+    id: sync_out
+    uart_id: sync_bus
+    lvgl_clock_id: [dc_a, dc_b, dc_c]
+    broadcast_interval: 1s
+    # The wall's temperature source, for `mode: temp`. Master only - the
+    # reading rides along in the sync packet to every other board.
+    temperature_sensor_id: room_temp
+
+interval:
+  # Boot phases: spin while connecting, birds while waiting for NTP, then the
+  # real time. Only the master runs this - the mode it lands on rides the sync
+  # packet, so the slaves follow rather than each deciding for themselves.
+  #
+  # Addressed to dc_a ONLY, on purpose. dc_a is the picker; dc_b and dc_c are
+  # followers and are handed its mode by the broadcaster once a second. Driving
+  # them directly here would fight that: mid-choreography this would snap them
+  # back to the time every second while dc_a kept animating, and the board's
+  # three panels would visibly disagree.
+  - interval: 1s
+    then:
+      # The substitution is baked into the lambda at codegen - it comes out as
+      # strcmp("time", "demo") - so the test is a constant the compiler folds
+      # away, and the branch is decided by the value you build with rather than
+      # re-evaluated every second.
+      - if:
+          condition:
+            lambda: 'return strcmp("${clock_mode}", "demo") == 0;'
+          then:
+            # Bring-up: hold the fake-minute counter instead of the real clock.
+            # Re-asserted every second rather than set once at boot, so it also
+            # reclaims the wall after each cycle_modes window - set_mode is a
+            # no-op when it is already demo, and is deferred (not lost) while a
+            # choreography is playing.
+            - lvgl_clock.demo: dc_a
+          else:
+            - if:
+                condition:
+                  lambda: "return id(clock_time).now().is_valid();"
+                then:
+                  - lvgl_clock.show_time: dc_a
+                else:
+                  - if:
+                      condition:
+                        wifi.connected:
+                      then:
+                        - lvgl_clock.flying_birds: dc_a
+                      else:
+                        - lvgl_clock.rotate_left: dc_a
+
+# Stand-in temperature for `mode: temp` until a real sensor is wired up. It
+# walks 18->24 C and back so the digits actually change while you watch. Swap
+# the platform for a real one (dht, bme280, homeassistant, ...) and keep the id.
+#
+# MASTER ONLY, on purpose: the reading travels in the sync packet, so every
+# other board shows this number without a sensor of its own. Eight sensors
+# would just be eight opinions about the same room.
+sensor:
+  - platform: template
+    id: room_temp
+    name: "Room Temperature"
+    unit_of_measurement: "°C"
+    accuracy_decimals: 0
+    update_interval: 10s
+    lambda: |-
+      static int step = 0;
+      step = (step + 1) % 14;
+      return 18.0f + (step < 7 ? step : 14 - step);

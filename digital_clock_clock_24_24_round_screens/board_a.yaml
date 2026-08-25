@@ -5,9 +5,6 @@ packages:
   slave: !include common_slave.yaml
 
 substitutions:
-#  clock_index_a: "0"
-#  clock_index_b: "2"
-#  clock_index_c: "4"
-  clock_index_a: "19"
-  clock_index_b: "21"
-  clock_index_c: "23"
+  clock_index_a: "0"
+  clock_index_b: "2"
+  clock_index_c: "4"

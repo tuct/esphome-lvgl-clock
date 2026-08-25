@@ -7,7 +7,7 @@
 #   lvgl_id      the LVGL instance id
 #   display_id   the display it drives
 #   widget_id    the lvgl_clock widget id (the FIRST one is the wall's picker -
-#                see board_c.yaml)
+#                see board_d.yaml)
 #   clock_index  which of the 24 mini-clocks this panel draws
 #
 # Everything else - and it is nearly everything - is shared by construction.
@@ -46,7 +46,7 @@ lvgl:
             movement: opposite     # opposite | clockwise | counter | long
             transition_length: 5s
             # No `mode:` here on purpose. It would only describe the first
-            # second of this panel's life - board_c.yaml's interval takes over
+            # second of this panel's life - board_d.yaml's interval takes over
             # on the master, and the sync packet takes over on every slave. The
             # wall's mode is owned by the master at runtime, so setting it per
             # panel at compile time is a value that is always about to be
@@ -66,19 +66,14 @@ lvgl:
               interval: 1min   # cadence only - the 35s window at :10 is fixed
               modes:
                 - birds
-                - temp
                 - wave
-                - temp
                 - spiral
-                - temp
                 - wind
-                - temp
                 - rotating_maze
-                - temp
                 - zipper
-                - temp
+                - mirror_wave
                 - love
-                - temp
+#                - temp
             # Every hand straight up for the first 10 s: proves each panel is
             # alive and mounted the right way up, and the first sweep then
             # starts from the same position on every node.

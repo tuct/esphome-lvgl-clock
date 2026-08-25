@@ -14,6 +14,7 @@ tools/clockclock24-sim/
   index.html   the wall, and the controls
   engine.js    constants, glyph tables, one function per choreography
   wall.js      the mode state machine: entry blend, settle back to time
+  pattern.js   the pattern editor's model: per-clock motion, relative speeds
   check.js     headless "nothing jumped" regression check
   preview.py   ASCII render of a pose, for sketching glyphs in a terminal
 ```
@@ -46,7 +47,9 @@ function tickMyMode(cur, t, { modeSpeed }) {
 ```
 
 Register it in `MODES` **and** in the `window.CC` export block, both at the
-bottom of the file, and it appears in the UI. Then:
+bottom of the file, and it appears in the UI. Give its label a trailing `*`
+while it lives here only — **the marker means "sandbox only, not in the
+firmware"**, and it comes off when the mode is ported. Then:
 
 - **Angles are degrees, 0 = 12 o'clock, clockwise.** `wrap360()` normalises,
   `shortestDelta(a, b)` gives the signed way round in `(-180, 180]`.
@@ -72,6 +75,10 @@ bottom of the file, and it appears in the UI. Then:
 Designing a picture (a cat, a letter, an arrow) by writing angle tables and
 guessing is slow. **Press `Edit`** and pose the wall directly instead:
 
+- **The first click selects, and only selects.** Clicking a clock to look at
+  its settings used to nudge a hand by however far the pointer sat from it,
+  which quietly edited the pose every time you inspected something. Drag from
+  an **already-selected** clock to move its hands.
 - **Drag anywhere inside a clock** to swing a hand. It grabs whichever hand is
   already nearest the pointer, so you never have to hit a 2 px line.
 - **Snaps to 15°** by default — 5°, 45° and 1° are in the dropdown. 15° is
@@ -341,6 +348,198 @@ runs across the wall is a zip being undone and done up again.
 
 **Sandbox only** — not in the firmware. Port it with `Copy CPP` when it earns
 its place.
+
+## `mirror_wave`
+
+Every clock rests as **one vertical stroke** — both hands on the 12–6 line —
+then scissors open, the two hands parting like a pair of dividers. The wall is
+**mirrored about its centre line**, so the left half opens right and the right
+half opens left. The **middle row scissors the other way** from the two around
+it, so a column reads as three alternating chevrons rather than three doing the
+same thing, and the rows shear against each other as they open.
+
+It starts in the middle and spreads outwards:
+
+```
+t=1.2    | | | | | | | |      | | | < > | | |      | | | | | | | |
+t=2.4    | | | > < | | |      | | < < > > | |      | | | > < | | |
+t=3.6    | | > > < < | |      | < < < > > > |      | | > > < < | |
+t=5.4    > > > > < < < <      < < < < > > > >      > > > > < < < <
+           row 0                 row 1                 row 2
+```
+
+1. The two centre columns, **middle row** first.
+2. Their top and bottom rows, `MIRROR_ROW_LAG_DEG` behind.
+3. Each ring outwards — (2, 5), then (1, 6), then (0, 7) — one
+   `MIRROR_COL_LAG_DEG` behind the ring inside it.
+
+**Within a row** every clock turns at the same rate forever, so the offsets
+picked up on the way out are fixed: a standing fan, widest in the middle, never
+bunching and never overtaking. Measured separation across the middle row once
+it is running, at `t = 4`:
+
+```
+row 0    41  59  77  95  95  77  59  41
+row 1    68  92 116 140 140 116  92  68
+row 2    41  59  77  95  95  77  59  41
+```
+
+12° between rings is a **shallow** fan — the wall opens close to together, with
+the middle only a little ahead. Raise `MIRROR_COL_LAG_DEG` and the spread
+becomes a visible ripple travelling out from the centre; at 25° the outer
+columns were still shut while the middle was half open.
+
+**Across rows it is not fixed.** The top and bottom rows run at
+`MIRROR_OUTER_RATE` of the middle one — 75%, so 15 °/s against 20 °/s — and
+therefore fall steadily further behind rather than holding a constant offset.
+The three rows beat against one another, coming back into step every
+`MIRROR_TURN_S / (1 − MIRROR_OUTER_RATE)` = **36 s**. That is the one thing
+here with a period longer than a single open-close, so it is what stops the
+mode looking like a loop.
+
+180° of travel returns both hands to the vertical — hand 0 lands where hand 1
+was — so the figure closes back up and repeats with no seam to hide.
+
+| Constant | Now | |
+| --- | --- | --- |
+| `MIRROR_TURN_S` | 9 s | 180° of hand travel: one open-close |
+| `MIRROR_COL_LAG_DEG` | 12° | Between one ring and the next one out |
+| `MIRROR_ROW_LAG_DEG` | 7° | Extra for the top and bottom rows |
+| `MIRROR_RAMP_S` | 1 s | Spin-up, per clock |
+| `MIRROR_OUTER_RATE` | 0.75 | Rows 0 and 2, as a fraction of the middle row's rate |
+
+The lags are written in **degrees** and divided by the rate, not stored as
+delays — so the look is tuned by the angle you want between neighbours, and
+stays correct when `MIRROR_TURN_S` changes.
+
+## `pattern` — the pattern editor
+
+A mode with no code of its own: **24 per-clock motion specs you build in the
+UI**. Pick the `pattern` mode, press **Edit**, and a *Pattern* card appears —
+it is hidden otherwise, since every control writes into the selected clock and
+there is no selection when you are not editing.
+
+Each clock carries:
+
+| | |
+| --- | --- |
+| **Home pose** | What you configured. Drag the hands on the wall — in `pattern` the drag writes into the spec, not just the frame, so it sticks |
+| **Direction**, per hand | `←` counter-clockwise · `—` still · `→` clockwise |
+| **Speed**, per hand | `fixed` 0…1, or `same as…` a neighbour ± an offset |
+
+Speed 1.0 is `PATTERN_MAX_RATE` = 90 °/s, one turn in 4 s.
+
+### Editing while it moves
+
+Edit mode normally freezes the wall so a posed hand stays where you put it. The
+pattern editor is the exception — its controls are all about motion, and you
+cannot judge a speed you cannot see — so **`run motion while editing`** keeps
+the animation going. It is on by default and applies only in `pattern`.
+
+That needs one correction to work. With the motion running, storing a dragged
+angle straight into the pose would snap the hand to wherever the motion had
+carried it: you would be aiming at a moving target. So the pose is stored as
+**where the hand is now, minus how far the motion has carried it** —
+
+```js
+setPoseAt(i, hand, angle, ts)   //  a = angle − dir · speed · RATE · ts
+```
+
+— and the hand lands exactly where you dropped it, then carries on. `Pose from
+wall` applies the same correction, so capturing a moving wall does not bake the
+offset in twice.
+
+### Why editing a speed does not jump
+
+The same maths bites harder on the motion controls. An angle is measured from
+`t = 0`, so **changing a speed retroactively rewrites the whole history**: a
+clock that has been running 10 s at 0.5 leaps 90° the instant you nudge it to
+0.8. And because speeds can be relative, one edit moves clocks you never
+touched.
+
+So every motion edit goes through `rebaseAll()`: remember where all 48 hands
+are, apply the change, then re-anchor all 24 poses so they are still there. The
+hands carry on from where they were, at the new speed — measured, 0° of jump
+against 90° without it.
+
+It anchors to the **pattern's own output**, not to `wall.cur`. `wall.cur` is the
+pattern *plus* whatever the entry blend or the settle is still adding on top, so
+anchoring to that bakes the blend into the pose and the wall snaps by however
+much the blend was contributing the moment it finishes — **135°**, measured, if
+you touch a control during the fade-in. Toggling `run motion while editing` rebases too, so it
+resumes from where the hands are rather than from where they would have been
+had it never stopped.
+
+It is an analogue clock even while you are editing it.
+
+### Relative speed is the point
+
+`same as… left − 0.12` means *take my left neighbour's speed for this hand and
+subtract 0.12*. Set one clock going and the rest of the wall derives itself:
+
+```
+row 0 resolved speeds:  1.00  0.88  0.76  0.64  0.52  0.40  0.28  0.16
+```
+
+That is one fixed clock at 1.0 and seven relative ones, and it is how you get a
+gradient without typing eight numbers. Neighbours are `left` / `right` / `up` /
+`down`; a reference that runs off the edge of the wall resolves to 0.
+
+**The offset is per hop, and it compounds.** Each clock adds it to its
+neighbour's *resolved* speed, so across an 8-wide wall the total is seven times
+what you set — which is why a value that looks small runs the far end down to a
+standstill:
+
+```
+offset -0.05 ->  1.00 0.95 0.90 0.85 0.80 0.75 0.70 0.65
+offset -0.10 ->  1.00 0.90 0.80 0.70 0.60 0.50 0.40 0.30
+offset -0.20 ->  1.00 0.80 0.60 0.40 0.20 0.00 0.00 0.00
+offset -0.30 ->  1.00 0.70 0.40 0.10 0.00 0.00 0.00 0.00
+```
+
+The usable range for a gradient that spans the wall is therefore about
+**±1/7 ≈ ±0.14**, so the slider is capped at ±0.2 in steps of 0.01 rather than
+spanning ±1 — at the old range the entire useful zone was a few pixels of
+travel. Both speed readouts are in **°/s**, since 0…1 means nothing on its own.
+
+**Chains can loop** — A takes B's speed and B takes A's. That resolves to 0 and
+stops rather than recursing forever, so a mistake costs you a still clock, not
+a hung tab.
+
+### Copying
+
+**Copy** takes the selected clock's pose *and* motion; then **Paste** to one
+clock, **its row**, **its column**, or **all 24**. Building a wall usually
+means posing one clock, giving it the motion you want, and pasting it out —
+then going back to the few that differ.
+
+**Copy JS** exports all 24 as an annotated array, one clock per line with its
+column and row, ready to paste into `engine.js` as a fixed mode.
+
+### Home pose vs runtime anchor
+
+Each clock stores **two** poses, and the difference matters:
+
+| | Changed by | |
+| --- | --- | --- |
+| **home** | dragging a hand · `Pose from wall` | What you configured. Nothing else touches it |
+| **anchor** | every speed / direction edit, via `rebaseAll` | Where the motion is measured from, re-cut constantly so the hands never jump |
+
+If there were only one pose, the thing you configured would be quietly
+overwritten the first time you nudged a slider, and there would be nothing left
+to go back to. Verified: configure 90°, run 8 s, edit the speed — the hand stays
+put, the anchor moves to 162°, and **home is still 90°**.
+
+**Back to pose** re-cuts every anchor from home, so the hands land on the poses
+you chose. **Pose from wall** is its opposite: take wherever the hands have got
+to and make *that* home.
+
+Both are **disabled while the motion is running** — they rewrite poses, which
+only makes sense against a still wall; against a moving one you would be aiming
+at a moving target and could not see the result. Pause, or untick `run motion
+while editing`, and they light up. With the motion off the loop is not ticking,
+so both push the pattern into the frame by hand rather than waiting for a
+redraw that will not come.
 
 ## `test` — the scratch bench
 

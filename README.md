@@ -4,6 +4,10 @@ A clock **widget for [ESPHome](https://esphome.io/)'s LVGL** in five styles —
 and two ways to build a physical [ClockClock 24](https://clockclock.com/) out
 of it, where a digital clock is made from two dozen little analogue ones.
 
+[![ClockClock 24 — the full 24-screen wall running](https://img.youtube.com/vi/BnIoumtDO5s/maxresdefault.jpg)](https://www.youtube.com/watch?v=BnIoumtDO5s)
+
+*↑ The finished 24-screen wall, running. [Watch it](https://www.youtube.com/watch?v=BnIoumtDO5s).*
+
 <img src="./digital_clock_clock_24_24_round_screens/images/cc_24_a.jpg" width="80%">
 
 It started as a ClockClock 24 rendered on a **single** screen — above, one
@@ -21,7 +25,7 @@ boards, twenty-four screens, one clock.
 
 ## Digital Clock Clock 24 — 24 round screens
 
-<img src="./digital_clock_clock_24_24_round_screens/images/PXL_20260819_174757600.MP.jpg" width="70%">
+<img src="./digital_clock_clock_24_24_round_screens/images/half_screens_testing.jpg" width="70%">
 
 Twenty-four 1.28″ round panels on eight XIAO ESP32-S3 boards, one mini-clock
 per panel, one board per column of the wall. Evenly spaced across all 24, so
@@ -30,10 +34,10 @@ point.
 
 | | |
 | --- | --- |
-| **Cost** | **€206 – €376** for the whole wall |
-| **Size** | ≈ **27 × 13 cm** — eight 34 × 131.6 mm carrier boards side by side |
+| **Cost** | **€207 – €376** for the whole wall |
+| **Size** | ≈ **27 × 13 cm**, **730 g** assembled — eight 34 × 131.6 mm carrier boards side by side |
 | **Effort** | A project. One custom PCB, 24 panels to mount, 8 boards to flash |
-| **Status** | **Running on hardware** — 12 of the 24 clocks built |
+| **Status** | **Running on hardware** — all eight boards built, the full 24-clock wall |
 
 → [**Build it**](./digital_clock_clock_24_24_round_screens) — costed BOM,
 carrier PCB and gerbers, wiring, assembly order and bring-up.

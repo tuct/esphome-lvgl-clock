@@ -531,6 +531,75 @@ function tickZipper(cur, t, { modeSpeed }) {
   }
 }
 
+// -------------------------------------------------------- mirror_wave ------
+// Every clock rests as one vertical stroke - both hands on the 12-6 line - and
+// then scissors open, the two hands parting like a pair of dividers.
+//
+// The wall is MIRRORED about its centre line: the left half opens to the right
+// and the right half opens to the left, so the chevrons always point inwards at
+// the middle and the two halves are reflections of each other at every instant.
+//
+// The middle row opens the OTHER WAY from the two around it, so a column is
+// three alternating chevrons rather than three identical ones.
+//
+// It starts in the MIDDLE and spreads OUTWARDS. The order is:
+//
+//   1. the two centre columns (3 and 4), middle row
+//   2. their top and bottom rows, MIRROR_ROW_LAG_DEG behind
+//   3. the next ring out (2 and 5), then (1 and 6), then (0 and 7), each
+//      MIRROR_COL_LAG_DEG behind the ring inside it
+//
+// Within a row every clock turns at the same rate, so the offsets picked up on
+// the way out are fixed: a standing fan, widest in the middle, never bunching
+// and never overtaking. ACROSS rows it is not fixed - the top and bottom run
+// slower than the middle (MIRROR_OUTER_RATE), so they drift steadily further
+// behind and the three rows beat against one another.
+//
+// 180 deg of travel returns both hands to the vertical - hand 0 lands where
+// hand 1 was - so the figure closes back up and repeats without a seam.
+const MIRROR_TURN_S = 9.0;         // 180 deg of hand travel: one open-close
+const MIRROR_COL_LAG_DEG = 12.0;   // between one ring and the next one out
+const MIRROR_ROW_LAG_DEG = 7.0;   // extra for the top and bottom rows
+const MIRROR_RAMP_S = 1.0;         // spin-up, per clock
+// The top and bottom rows turn slower than the middle one. They therefore fall
+// steadily further behind rather than holding a fixed offset - the rows beat
+// against each other, coming back into step every MIRROR_TURN_S / (1 - rate)
+// seconds, 36 s at these values.
+const MIRROR_OUTER_RATE = 0.75;    // rows 0 and 2, as a fraction of the middle
+
+function tickMirrorWave(cur, t, { modeSpeed }) {
+  const rate = 180 / MIRROR_TURN_S;               // deg/s once up to speed
+  // Lags are written in DEGREES and converted, so the look is tuned by the
+  // angle you want between neighbours rather than by a delay that has to be
+  // re-derived whenever the rate changes.
+  const colDelay = MIRROR_COL_LAG_DEG / rate;
+  const rowDelay = MIRROR_ROW_LAG_DEG / rate;
+  const ts = t * modeSpeed;
+  const mid = (WALL_COLS - 1) / 2;                // 3.5 on an 8-wide wall
+
+  for (let c = 0; c < NUM_CLOCKS; c++) {
+    const { col, row } = wallPos(c);
+    // Rings out from the centre: columns 3 and 4 are ring 0, 0 and 7 ring 3.
+    const ring = Math.abs(col - mid) - 0.5;
+    const x = ts - ring * colDelay - (row === 1 ? 0 : rowDelay);
+
+    // Rows 0 and 2 run slower than row 1 - see MIRROR_OUTER_RATE.
+    const r = (row === 1) ? rate : rate * MIRROR_OUTER_RATE;
+    let turned;
+    if (x <= 0) turned = 0;                                  // not away yet
+    else if (x < MIRROR_RAMP_S) turned = r * x * x / (2 * MIRROR_RAMP_S);
+    else turned = r * (x - MIRROR_RAMP_S / 2);               // at speed
+
+    // Left half opens right, right half opens left - the mirror. The MIDDLE ROW
+    // then scissors the other way from the two around it, so a column reads as
+    // three chevrons that alternate rather than three doing the same thing, and
+    // the rows shear against each other as they open.
+    const sign = (col <= mid ? 1 : -1) * (row === 1 ? -1 : 1);
+    cur[c * 2 + 0] = wrap360(0 + sign * turned);
+    cur[c * 2 + 1] = wrap360(180 - sign * turned);
+  }
+}
+
 // -------------------------------------------------------------- test -------
 // SANDBOX ONLY - the scratch bench, empty again now that zipper has its own
 // name. Nothing depends on it, so overwrite the body freely; when something in
@@ -555,6 +624,9 @@ function tickTime(cur, t, { digits }) {
   }
 }
 
+// A trailing * marks a mode that exists HERE ONLY and is not in the firmware.
+// Drop the marker when a mode is ported, or the sandbox starts lying about what
+// the wall can actually do.
 const MODES = {
   time:        { fn: tickTime,   label: "time",        pose: true  },
   rotate_left: { fn: tickRotate, label: "rotate_left"              },
@@ -564,9 +636,10 @@ const MODES = {
   wind:        { fn: tickWind,   label: "wind"                     },
   love:        { fn: tickLove,   label: "love",        pose: true  },
   temp:        { fn: tickTemp,   label: "temp",        pose: true  },
-  rotating_maze: { fn: tickRotatingMaze, label: "rotating_maze ✳"    },
-  zipper:      { fn: tickZipper, label: "zipper ✳"                 },
-  test:        { fn: tickTest,   label: "test ✳",      pose: true  },
+  rotating_maze: { fn: tickRotatingMaze, label: "rotating_maze"      },
+  zipper:      { fn: tickZipper, label: "zipper"                   },
+  mirror_wave: { fn: tickMirrorWave, label: "mirror_wave"          },
+  test:        { fn: tickTest,   label: "test *",      pose: true  },
 };
 
 // Everything the page needs, in one namespace.
@@ -575,5 +648,5 @@ window.CC = {
   PARK, FONT, LOVE, TEMP_GLYPHS, TG_DEGREE, TG_C, TG_MINUS, TG_BLANK,
   wrap360, shortestDelta, ease, easeOut, wallPos, K, MODES,
   tickRotate, tickBirds, tickWave, tickSpiral, tickWind, tickLove, tickTemp, tickTime,
-  tickRotatingMaze, tickZipper, tickTest, cellAt, mazePhase,
+  tickRotatingMaze, tickZipper, tickMirrorWave, tickTest, cellAt, mazePhase,
 };

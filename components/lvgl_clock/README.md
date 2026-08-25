@@ -6,7 +6,7 @@ and redraws itself — no `interval:` + lambda glue needed. Pick a **style**:
 
 | `style` | preview | what it looks like |
 | --- | --- | --- |
-| [**clockclock24**](#style-clockclock24) *(default)* | <img src="../../images/clockclock24.gif" width="200"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` / `wave` / `spiral` / `wind` / `rotating_maze` / `zipper` / `love` idle animations. |
+| [**clockclock24**](#style-clockclock24) *(default)* | <img src="../../images/clockclock24.gif" width="200"> | A digital clock built from **24 tiny analogue clocks** ([ClockClock 24](https://clockclock.com/)); hands sweep to form the digits, with `rotate_left` / `flying_birds` / `wave` / `spiral` / `wind` / `rotating_maze` / `zipper` / `mirror_wave` / `love` idle animations. |
 | [**analog**](#style-analog) | <img src="../../images/analog.gif" width="160"> | A classic analogue clock face — independently configurable ticks and per-hand style/colour. |
 | [**digital**](#style-digital) | <img src="../../images/digital.gif" width="200"> | `HH:MM(:SS)` as a **7-segment** display with a "ghost 8", optional blinking colon, and an AM/PM column in 12h mode. |
 | [**flipclock**](#style-flipclock) | <img src="../../images/flipclock.gif" width="200"> | `HH:MM(:SS)` as **split-flap cards** with real font-rendered digits and an animated flip on every change ([flipclock.js](https://flipclockjs.com/) look). |
@@ -179,7 +179,7 @@ clockclock24:
   movement: opposite        # opposite | clockwise | counter | long
   transition_length: 2s      # sweep duration on a time change
   mode: time                 # time | rotate_left | flying_birds | wave | spiral
-                             #      | wind | rotating_maze | zipper | love | temp | demo
+                             #      | wind | rotating_maze | zipper | mirror_wave | love | temp | demo
   mode_speed: 1.0             # idle-animation speed multiplier (idle animations only)
   cycle_modes: ...           # break out into a random choreography - see below
   spacing: 0.0                # gap between HH and MM, in clock-widths
@@ -238,6 +238,7 @@ slice of one figure, with no coordination beyond the synced time.
 | `wind` | `lvgl_clock.wind` | Each wall **column** is one continuous stalk — leaning in top-left, vertical through the middle, out bottom-right. A gust from the left shears the two free ends past each other (top `10:30→1:30`, bottom `4:30→7:30`) while the middle row stays put, and rolls across the wall |
 | `rotating_maze` | `lvgl_clock.rotating_maze` | A chevron per clock, alternating by column, the pair turning as a rigid body — clockwise on rows 0 and 2, counter-clockwise on row 1. The rate is **not constant**: it eases to 40% of pace each time the wall lands on an aligned figure, so the lattice reads as forming and dissolving rather than spinning |
 | `zipper` | `lvgl_clock.zipper` | The wall rests as one field of `\` diagonals; a front runs across it left to right, **unzipping** each column into a pair of mirrored chevrons (`> <`) and doing it up behind. Between passes a resting column leans slowly and back, so the field is never quite frozen |
+| `mirror_wave` | `lvgl_clock.mirror_wave` | Every clock rests as one vertical stroke and scissors open, **mirrored about the wall's centre line** — the left half opens right, the right half left, and the middle row the other way from the two around it. Starts at the middle columns and spreads outwards; the top and bottom rows run at 75% of the middle's rate, so the three rows beat against each other on a 36 s cycle |
 | `love` | `lvgl_clock.love` | Spells **LOVE** across the four digit positions and holds it — a pose rather than an animation, swept in and out like any other mode change |
 | `time` | `lvgl_clock.show_time` | Not an animation — back to the clock |
 
@@ -739,7 +740,7 @@ time platform, so they are also the worked examples of `partial:`,
 
 | Build | Boards | What it is |
 | --- | --- | --- |
-| [`digital_clock_clock_24_24_round_screens/`](../../digital_clock_clock_24_24_round_screens) | 8 × XIAO ESP32-S3, 3 round panels each | The full 24-clock wall — one board per physical column, **built and running** ([photos](../../digital_clock_clock_24_24_round_screens/README.md#first-prototype)). Master/slave roles, per-board configs `board_a.yaml`…`board_h.yaml`, wiring, pin budget, power and bring-up order in its own [README](../../digital_clock_clock_24_24_round_screens/README.md). |
+| [`digital_clock_clock_24_24_round_screens/`](../../digital_clock_clock_24_24_round_screens) | 8 × XIAO ESP32-S3, 3 round panels each | The full 24-clock wall — one board per physical column, **built and running** ([photos](../../digital_clock_clock_24_24_round_screens/README.md#first-full-build)). Master/slave roles, per-board configs `board_a.yaml`…`board_h.yaml`, wiring, pin budget, power and bring-up order in its own [README](../../digital_clock_clock_24_24_round_screens/README.md). |
 | [`digital_clock_clock_24_4_screens/`](../../digital_clock_clock_24_4_screens) | 2 × XIAO ESP32-S3, 2 panels each | **The cheap way in** — a sixth of the displays. Each panel renders a whole **digit** (`partial: {mode: digit}`) rather than one mini-clock, so four screens make `HH:MM`. The trade is a visible gap at every digit boundary, where the original is one continuous 8×3 grid. |
 
 The examples read Wi-Fi/API/OTA credentials from `secrets.yaml` — copy

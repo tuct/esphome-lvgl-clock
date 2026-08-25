@@ -1,4 +1,4 @@
-# Everything the seven listener boards (every board but C) share. A board file sets its
+# Everything the seven listener boards (every board but D) share. A board file sets its
 # three clock indices and nothing else - including the hostname, which is
 # derived from the first index below so that a board file really is just its
 # column.
