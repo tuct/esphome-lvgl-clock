@@ -360,6 +360,28 @@ esphome run board_d.yaml      # master, over the network once it is on Wi-Fi
 esphome run board_a.yaml      # …and the other seven, over USB
 ```
 
+[`flash-all.sh`](./flash-all.sh) does the whole wall and pauses between boards
+so you can move the USB lead. macOS and Linux:
+
+```bash
+./flash-all.sh                    # all eight
+./flash-all.sh -b a,b,c           # some of them
+./flash-all.sh -p /dev/cu.usbmodem1101   # skip the port prompt
+./flash-all.sh --build-only       # check a change compiles for all eight
+```
+
+It names each board's column and clock indices as it goes, and does two things
+on purpose:
+
+- **Compiles all eight before uploading anything.** A compile error found
+  halfway through leaves you with a wall running two firmwares and a board in
+  your hand.
+- **Flashes the listeners first and the master last.** The mode is an integer on
+  the sync bus and new modes are *appended*, so a newer master can broadcast a
+  mode an older listener does not know — and that listener silently ignores the
+  mode field and holds its last animation. The other way round is harmless: an
+  older master only ever sends modes a newer listener already understands.
+
 Only board D has `ota:`, so the seven listeners are flashed over USB. That is
 the deliberate trade for having no Wi-Fi stack on them — see below.
 
@@ -504,9 +526,21 @@ Assistant entities, and both are editable **while it runs**:
 | | |
 | --- | --- |
 | `Pattern 1…8` | Paste a string from the sim's **Copy for ESPHome** button. Reads back too, so copying the state copies the pattern |
-| `Cycle modes` | `birds,temp,wave,temp,pattern` — order and repeats count |
-| `Cycle interval` | 1…60 min |
+| `Mode` | What the wall is doing now, and a way to change it immediately |
+| `Pattern` | Which pattern `mode: pattern` draws, 1–8 |
+| `Cycle modes` | `birds,temp,wave,fan,shear` — modes **and pattern names**, in order; repeats count |
+| `Cycle interval` | `off`, or 1…60 min |
 | `Reload patterns from firmware` | Undo, back to [`patterns/`](./patterns) |
+
+**A cycle list takes pattern names.** `wind,fan,love,shear` plays those two
+patterns by name rather than leaving it to a round-robin — the list reads back
+with the names too, so you can see what was accepted. A bare `pattern` still
+means "the next one".
+
+**`Mode` is an override, not a preference.** With a cycle interval set, the
+next window opens on schedule and takes the wall back. Set the interval to
+**`off`** and the rotation stops entirely — the wall then shows whatever `Mode`
+says and only changes when you or an automation change it.
 
 Edits are saved to flash, so the wall keeps them with Home Assistant off — the
 seven listeners still need nothing but power and a wire. A pattern write is

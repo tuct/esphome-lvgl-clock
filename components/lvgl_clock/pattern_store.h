@@ -63,6 +63,11 @@ class PatternStore {
     return (i >= 0 && i < this->count_ && this->slots_[i].complete()) ? &this->slots_[i] : nullptr;
   }
 
+  // Slot holding a pattern of this name, or -1. Lets a cycle list name a
+  // pattern directly - `fan,shear` rather than `pattern,pattern` and hoping the
+  // round-robin lands where you meant.
+  int find(const std::string &name) const;
+
   // Master side: define a slot outright.
   void set_name(int slot, const char *name);
   void set_clock(int slot, int clock, const PatternClock &c);

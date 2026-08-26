@@ -123,3 +123,17 @@ clock styles, if you just want a clock on a panel:
 
 → [**Component reference**](./components/lvgl_clock/README.md) ·
 [**`examples/`**](./examples) — ready-to-flash single-board configs
+
+## No hardware? Put it on a dashboard
+
+[**The Home Assistant cards**](./homeassistant/) render the
+whole wall in Lovelace, running the same engine — same choreographies, same
+sweeps, same pattern format. One is a clock for a wall tablet; the other is the
+**pattern editor**, wired to the wall: draw a pattern, watch it run, press
+**Send**, and 24 real clocks are running it a second later.
+
+There is also an **[add-on](./homeassistant/)**. Add this repository under
+Settings → Add-ons → Repositories and the pattern editor becomes a sidebar
+item, with the Pattern slots on your master in a dropdown: draw, **Send**,
+done. A pattern is data rather than firmware, so nothing is compiled and
+nothing is reflashed.

@@ -775,7 +775,9 @@ time:
     pattern_repeat: 5min      # and again, for boards that reboot later
 ```
 
-Up to **8** patterns per node, named after their files.
+Up to **8** patterns per node, named after their files — and those names are
+usable directly in a cycle list, so `wind,fan,love,shear` plays two of your own
+patterns by name.
 
 Author them in the browser: [`tools/clockclock24-sim`](../../tools/clockclock24-sim)
 runs this same engine, so a pattern looks on the wall exactly as it did on
@@ -825,8 +827,10 @@ editable while it runs — no reflash at all, not even of the master.
 | Entity | |
 | --- | --- |
 | `Pattern 1…8` | `text`, read **and** write. Its state is the pattern that is loaded, so copying the string copies the pattern — between slots, or between walls |
-| `Cycle modes` | `text`. `birds,temp,wave,temp,pattern` — order and repeats are meaningful, so listing `temp` every other entry gives it half the slots |
-| `Cycle interval` | `select`, 1…60 min. The 35 s window itself is fixed; only the cadence is yours |
+| `Mode` | `select`. The mode the wall is in, and a way to change it immediately. An **override**: a scheduled window will still take it back |
+| `Pattern` | `select`, 1–8. Which pattern `mode: pattern` draws. Separate from `Mode` so switching between your own patterns is not also a mode change |
+| `Cycle modes` | `text`. `birds,temp,wave,fan,shear` — **modes and pattern names**, in order. Repeats are meaningful, so listing `temp` every other entry gives it half the slots |
+| `Cycle interval` | `select`, **`off`** or 1…60 min. `off` stops the rotation, leaving `Mode` in charge. The 35 s window itself is fixed; only the cadence is yours |
 | `Reload patterns from firmware` | `button`. Throws away runtime edits and restores the folder — the way out of a bad one |
 
 These are stock `template` entities in the master's YAML rather than a custom

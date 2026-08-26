@@ -82,6 +82,10 @@ defaults:
     values: { title: "Hardware photos", parent: "The component", nav_order: 3 }
   - scope: { path: "tools/clockclock24-sim/README.md" }
     values: { title: "Sandbox & pattern editor", nav_order: 6 }
+  - scope: { path: "homeassistant/README.md" }
+    values: { title: "Home Assistant", nav_order: 7, has_children: true }
+  - scope: { path: "homeassistant/DOCS.md" }
+    values: { title: "Add-on and cards", parent: "Home Assistant", nav_order: 1 }
 
 # The sandbox is a static app and is copied through untouched: Jekyll only
 # processes files that HAVE front matter, and its .html and .js have none.
@@ -92,6 +96,10 @@ defaults:
 # That is the right way round - a link to the sandbox should run it.
 
 exclude:
+  # The add-on's payload is a STAGED COPY of the sandbox and the cards (Docker
+  # cannot reach outside its build context). Publishing it would put a second,
+  # stale sandbox on the site at a URL nothing links to.
+  - homeassistant/app
   - .esphome
   - "**/.esphome"
   - "**/__pycache__"

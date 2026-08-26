@@ -53,6 +53,14 @@ PatternStore &pattern_store() {
   return store;
 }
 
+int PatternStore::find(const std::string &name) const {
+  for (int i = 0; i < this->count_; i++) {
+    if (this->slots_[i].complete() && name == this->slots_[i].name)
+      return i;
+  }
+  return -1;
+}
+
 void PatternStore::set_name(int slot, const char *name) {
   if (slot < 0 || slot >= PATTERN_MAX_PER_NODE)
     return;

@@ -115,15 +115,13 @@ void SyncTime::update() {
   // 24 different times.
   int demo_min = (primary != nullptr && mode == (int) CC_MODE_DEMO) ? primary->get_demo_min() : -1;
 
-  // Which pattern the wall is playing. Advanced on each ENTRY into pattern
-  // mode, so a `cycle_modes:` list containing `pattern` walks through the
-  // folder rather than showing the first one for ever.
-  if (mode == (int) CC_MODE_PATTERN && this->last_tx_mode_ != (int) CC_MODE_PATTERN &&
-      pattern_store().count() > 0) {
-    this->pattern_slot_ = (this->pattern_slot_ + 1) % pattern_store().count();
-  }
-  for (auto *clock : this->clocks_)
-    clock->set_pattern_slot(this->pattern_slot_);
+  // Which pattern the wall is playing. The PICKER owns this now - it has to,
+  // because a cycle list can name a pattern (`fan,shear`) and only the picker
+  // knows which entry the current window is on. This just reports it.
+  if (primary != nullptr)
+    this->pattern_slot_ = primary->get_pattern_slot();
+  for (size_t i = 1; i < this->clocks_.size(); i++)
+    this->clocks_[i]->set_pattern_slot(this->pattern_slot_);
 
   // Mirror the picker onto this board's other panels, exactly as a slave does
   // with what arrives on the wire - so all three agree even mid-choreography.

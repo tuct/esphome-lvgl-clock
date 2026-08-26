@@ -9,6 +9,7 @@
 #include "esphome/components/sensor/sensor.h"
 #endif
 
+#include <string>
 #include <vector>
 
 namespace esphome {
@@ -152,6 +153,24 @@ inline const char *clock_mode_name(ClockMode m) {
   return "unknown";
 }
 
+// The inverse. Returns -1 for anything it does not recognise.
+//
+// This exists because the names are reachable from THREE places now - the YAML
+// at codegen, a `cycle_modes` string typed into Home Assistant, and a mode
+// picked from a select - and only the first of those went through Python's
+// MODES table. `birds` is a config alias for `flying_birds`, so a runtime
+// parser that only knew the canonical names silently dropped it from any list
+// that used it.
+inline int clock_mode_from_name(const std::string &name) {
+  for (int m = 0; m <= (int) CC_MODE_LAST; m++) {
+    if (name == clock_mode_name((ClockMode) m))
+      return m;
+  }
+  if (name == "birds")
+    return (int) CC_MODE_FLYING_BIRDS;   // the alias the YAML accepts
+  return -1;
+}
+
 // The wall the choreographies are laid out on: 4 digits of 2 columns each,
 // 3 rows tall. A widget rendering only part of it (`partial:`) still indexes
 // clocks 0..23 globally, so every node computes the same figure for its own
@@ -281,7 +300,12 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // ways to make a wall look like a disco. Needs a synced clock; nothing fires
   // until the time is valid.
   void set_cycle_interval(uint32_t interval_s) { this->cycle_interval_s_ = interval_s; }
-  void add_cycle_mode(ClockMode m) { this->cycle_modes_.push_back(m); }
+  // `slot` names a pattern for a CC_MODE_PATTERN entry; -1 means "whichever
+  // comes next", which is what a bare `pattern` in the list gets.
+  void add_cycle_mode(ClockMode m, int slot = -1) {
+    this->cycle_modes_.push_back(m);
+    this->cycle_slots_.push_back(slot);
+  }
 
   // ---- runtime control ------------------------------------------------------
   //
@@ -289,7 +313,7 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // them - a slave is a follower and never picks - so nothing here has to reach
   // the other boards, and there is no wire format to extend.
   uint32_t get_cycle_interval() const { return this->cycle_interval_s_; }
-  void clear_cycle_modes() { this->cycle_modes_.clear(); }
+  void clear_cycle_modes() { this->cycle_modes_.clear(); this->cycle_slots_.clear(); }
   size_t cycle_mode_count() const { return this->cycle_modes_.size(); }
 
   // "birds,temp,wave" -> the list. Unknown names are DROPPED, not rejected:
@@ -298,6 +322,29 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // entity republishes so you can see it.
   void set_cycle_modes_text(const std::string &text);
   std::string get_cycle_modes_text() const;
+
+  // Set the mode by name, for a Home Assistant select. Returns false if the
+  // name is not a mode. Note this is an OVERRIDE, not a preference: with
+  // `cycle_interval` running, the next window still opens on schedule and takes
+  // the wall back. Set the interval to off to make a choice stick.
+  bool set_mode_by_name(const std::string &name) {
+    int m = clock_mode_from_name(name);
+    if (m < 0)
+      return false;
+    this->override_mode((ClockMode) m);
+    return true;
+  }
+  // A DELIBERATE choice, as opposed to set_mode()'s "here is the mode" from the
+  // bus or a boot-phase interval.
+  //
+  // set_mode() defers while a choreography window is open, so that the master's
+  // once-a-second show_time does not chop an animation in half. That is right
+  // for automatic callers and wrong for a person: picking `spiral` in Home
+  // Assistant and watching it stay on `wave` reads as broken. So this closes
+  // the window, applies the mode now, and stops the cycle re-opening one for
+  // the rest of the current interval.
+  void override_mode(ClockMode m);
+  std::string get_mode_name() const { return clock_mode_name(this->mode_); }
 #ifdef USE_SENSOR
   // Source for `mode: temp`. Optional: with no sensor - or before it has
   // published a reading - the temp mode is skipped in the cycle rather than
@@ -721,7 +768,15 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // Mode cycle. interval 0 = disabled.
   uint32_t cycle_interval_s_{0};
   std::vector<ClockMode> cycle_modes_;
+  // Parallel to cycle_modes_: which pattern a `pattern` entry means, or -1 for
+  // the next one round.
+  std::vector<int> cycle_slots_;
   bool cycle_active_{false};
+  // Set when a person picks a mode. Holds off the cycle until the interval
+  // ticks over, so the pick survives longer than one loop.
+  bool cycle_overridden_{false};
+  uint32_t cycle_override_slot_{0};
+  uint32_t current_cycle_slot_() const;
   // Set by a listening sync platform - see set_mode_follower().
   bool mode_follower_{false};
   // What to go back to when the window closes. While a window is open,

@@ -91,6 +91,14 @@ time:
     pattern_delay: 30s
     pattern_repeat: 5min
 
+globals:
+  # Latches once the clock is real and the wall has been put on the time. See
+  # the interval below for why it exists.
+  - id: boot_time_shown
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
 interval:
   # Boot phases: spin while connecting, birds while waiting for NTP, then the
   # real time. Only the master runs this - the mode it lands on rides the sync
@@ -122,7 +130,20 @@ interval:
                 condition:
                   lambda: "return id(clock_time).now().is_valid();"
                 then:
-                  - lvgl_clock.show_time: dc_a
+                  # ONCE, on the transition to a valid clock - not every
+                  # second. Re-asserting it every second fought anything that
+                  # set a mode from outside: pick `spiral` in Home Assistant
+                  # and this put the wall back on `time` a second later, which
+                  # looked exactly like the select was broken.
+                  #
+                  # It does not need repeating any more: a choreography window
+                  # restores the mode it interrupted when it closes.
+                  - if:
+                      condition:
+                        lambda: "return !id(boot_time_shown);"
+                      then:
+                        - lvgl_clock.show_time: dc_a
+                        - lambda: "id(boot_time_shown) = true;"
                 else:
                   - if:
                       condition:
@@ -131,6 +152,9 @@ interval:
                         - lvgl_clock.flying_birds: dc_a
                       else:
                         - lvgl_clock.rotate_left: dc_a
+                  # Lost the clock: let the boot sequence land on the time
+                  # again when it comes back.
+                  - lambda: "id(boot_time_shown) = false;"
 
 # ---------------------------------------------------------------------------
 # Runtime control from Home Assistant. MASTER ONLY, and it needs no changes on
@@ -160,7 +184,9 @@ text:
     max_length: 255
     lambda: 'return id(sync_out).get_pattern_text(0);'
     set_action:
-      - lambda: 'id(sync_out).set_pattern_text(0, x);'
+      - lambda: |-
+          id(sync_out).set_pattern_text(0, x);
+          id(pattern_1).publish_state(id(sync_out).get_pattern_text(0));
     update_interval: 60s
   - platform: template
     name: "Pattern 2"
@@ -169,7 +195,9 @@ text:
     max_length: 255
     lambda: 'return id(sync_out).get_pattern_text(1);'
     set_action:
-      - lambda: 'id(sync_out).set_pattern_text(1, x);'
+      - lambda: |-
+          id(sync_out).set_pattern_text(1, x);
+          id(pattern_2).publish_state(id(sync_out).get_pattern_text(1));
     update_interval: 60s
 
   # The choreography rotation, in order. Repeats are meaningful: listing `temp`
@@ -183,22 +211,88 @@ text:
     max_length: 255
     lambda: 'return id(dc_a).get_cycle_modes_text();'
     set_action:
-      - lambda: 'id(dc_a).set_cycle_modes_text(x);'
+      # Publish the result straight back, rather than waiting for the next
+      # poll. Without this the field snaps to its old value in Home Assistant
+      # for up to 30 s after you type - which reads as "it did not work", and
+      # you cannot see which entries were accepted.
+      - lambda: |-
+          id(dc_a).set_cycle_modes_text(x);
+          id(cycle_modes_text).publish_state(id(dc_a).get_cycle_modes_text());
     update_interval: 30s
 
 select:
+  # What the wall is doing right now, and a way to change it.
+  #
+  # This is an OVERRIDE, not a preference: with a cycle interval set, the next
+  # window opens on schedule and takes the wall back. Set the interval to `off`
+  # to make a choice stick.
+  - platform: template
+    name: "Mode"
+    id: mode_select
+    options:
+      - "time"
+      - "rotate_left"
+      - "flying_birds"
+      - "wave"
+      - "spiral"
+      - "wind"
+      - "rotating_maze"
+      - "zipper"
+      - "mirror_wave"
+      - "love"
+      - "temp"
+      - "pattern"
+    lambda: 'return id(dc_a).get_mode_name();'
+    set_action:
+      - lambda: |-
+          id(dc_a).set_mode_by_name(x);
+          id(mode_select).publish_state(id(dc_a).get_mode_name());
+    # A second, so the picker follows the wall when the cycle moves it on. The
+    # mode is one enum read - this costs nothing.
+    update_interval: 1s
+
+  # Which pattern `mode: pattern` draws. Separate from Mode on purpose: Mode
+  # says WHAT the wall is doing, this says WHICH pattern - so switching between
+  # your patterns does not mean re-picking the mode each time.
+  #
+  # Changing it while the wall is in `pattern` swaps immediately. Slots with
+  # nothing in them fall back to showing the time, which is why all eight are
+  # listed even when the patterns/ folder holds fewer: it is the capacity, not
+  # a promise. The names live in the Pattern 1..8 text fields above.
+  - platform: template
+    name: "Pattern"
+    id: pattern_select
+    options: ["1", "2", "3", "4", "5", "6", "7", "8"]
+    lambda: |-
+      return std::string(1, (char) ('1' + id(dc_a).get_pattern_slot()));
+    set_action:
+      - lambda: |-
+          id(dc_a).set_pattern_slot(atoi(x.c_str()) - 1);
+          id(pattern_select).publish_state(x);
+    update_interval: 5s
+
   # How often a window opens. The 35 s window itself is fixed - only the
   # cadence is yours to set.
+  #
+  # `off` stops the rotation entirely: the wall then shows whatever the Mode
+  # select says, and only changes when you or an automation change it.
   - platform: template
     name: "Cycle interval"
     id: cycle_interval_select
-    options: ["1 min", "2 min", "3 min", "4 min", "5 min", "10 min", "15 min", "30 min", "60 min"]
+    options: ["off", "1 min", "2 min", "3 min", "4 min", "5 min", "10 min", "15 min", "30 min", "60 min"]
     lambda: |-
+      uint32_t s = id(dc_a).get_cycle_interval();
+      if (s == 0) return std::string("off");
       char buf[12];
-      snprintf(buf, sizeof(buf), "%u min", (unsigned) (id(dc_a).get_cycle_interval() / 60));
+      snprintf(buf, sizeof(buf), "%u min", (unsigned) (s / 60));
       return std::string(buf);
     set_action:
-      - lambda: 'id(dc_a).set_cycle_interval((uint32_t) atoi(x.c_str()) * 60);'
+      # atoi("off") is 0, which is exactly what "no cycling" is - but spell it
+      # out rather than leaning on that.
+      - lambda: |-
+          uint32_t secs = (x == "off") ? 0 : (uint32_t) atoi(x.c_str()) * 60;
+          id(dc_a).set_cycle_interval(secs);
+          id(cycle_interval_select).publish_state(x);
     update_interval: 30s
 
 button:

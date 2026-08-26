@@ -1309,20 +1309,23 @@ void LvglClock::set_cycle_modes_text(const std::string &text) {
     if (a != std::string::npos)
       name = name.substr(a, b - a + 1);
     if (!name.empty()) {
-      bool found = false;
-      for (int m = 0; m <= (int) CC_MODE_LAST; m++) {
-        // `time` and `demo` are excluded on purpose: `time` is what a window
-        // returns TO, and demo is a bring-up aid that would stall the cycle.
-        if (m == (int) CC_MODE_TIME || m == (int) CC_MODE_DEMO)
-          continue;
-        if (name == clock_mode_name((ClockMode) m)) {
-          this->cycle_modes_.push_back((ClockMode) m);
-          found = true;
-          break;
-        }
+      int m = clock_mode_from_name(name);
+      // A name that is not a mode may be a PATTERN. `fan,shear` is what anyone
+      // would type, and it is more use than `pattern,pattern` plus a guess at
+      // where the round-robin has got to.
+      int slot = (m < 0) ? pattern_store().find(name) : -1;
+      if (m == (int) CC_MODE_TIME || m == (int) CC_MODE_DEMO) {
+        ESP_LOGW(TAG, "cycle_modes: '%s' cannot be cycled, dropped", name.c_str());
+      } else if (slot >= 0) {
+        this->cycle_modes_.push_back(CC_MODE_PATTERN);
+        this->cycle_slots_.push_back(slot);
+      } else if (m < 0) {
+        ESP_LOGW(TAG, "cycle_modes: '%s' is neither a mode nor a loaded pattern, dropped",
+                 name.c_str());
+      } else {
+        this->cycle_modes_.push_back((ClockMode) m);
+        this->cycle_slots_.push_back(-1);
       }
-      if (!found)
-        ESP_LOGW(TAG, "cycle_modes: '%s' is not a mode, dropped", name.c_str());
     }
     if (j >= text.size())
       break;
@@ -1336,7 +1339,12 @@ std::string LvglClock::get_cycle_modes_text() const {
   for (size_t i = 0; i < this->cycle_modes_.size(); i++) {
     if (i != 0)
       out += ",";
-    out += clock_mode_name(this->cycle_modes_[i]);
+    // Read back the pattern's NAME, not `pattern`, so what comes out of the
+    // field is what you could type back into it.
+    int slot = (i < this->cycle_slots_.size()) ? this->cycle_slots_[i] : -1;
+    const Pattern *p = (this->cycle_modes_[i] == CC_MODE_PATTERN && slot >= 0)
+                           ? pattern_store().get(slot) : nullptr;
+    out += (p != nullptr) ? p->name : clock_mode_name(this->cycle_modes_[i]);
   }
   return out;
 }
@@ -1499,14 +1507,44 @@ void LvglClock::blend_into_mode_() {
   this->cc_dirty_ = true;
 }
 
+// Which interval number we are in, by the same reckoning update_mode_cycle_()
+// uses - so an override can name the window it is overriding.
+uint32_t LvglClock::current_cycle_slot_() const {
+  if (this->cycle_interval_s_ == 0)
+    return 0;
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  if ((uint32_t) tv.tv_sec < 1546300800u)
+    return 0;
+  return ((uint32_t) tv.tv_sec - CYCLE_OFFSET_S) / this->cycle_interval_s_;
+}
+
+void LvglClock::override_mode(ClockMode m) {
+  this->cycle_active_ = false;          // close any window, so set_mode obeys
+  this->cycle_overridden_ = true;
+  this->cycle_override_slot_ = this->current_cycle_slot_();
+  this->cycle_left_s_ = 1e9;
+  this->base_mode_ = m;                 // and this is what a window returns to
+  ESP_LOGI(TAG, "Mode set to %s by request", clock_mode_name(m));
+  this->apply_mode_(m);
+}
+
 void LvglClock::update_mode_cycle_() {
   // A follower never picks - its mode arrives over the bus. One picker per
   // wall is the whole point: two independent choosers is how you get eight
   // boards running eight different choreographies.
   if (this->mode_follower_)
     return;
-  if (this->cycle_interval_s_ == 0 || this->cycle_modes_.empty())
+  // Interval 0 is OFF: no windows, the mode only changes when something asks.
+  // An open window has to be closed on the way out, or turning the cycle off
+  // mid-choreography would strand the wall in it for ever.
+  if (this->cycle_interval_s_ == 0 || this->cycle_modes_.empty()) {
+    if (this->cycle_active_) {
+      this->cycle_active_ = false;
+      this->apply_mode_(this->base_mode_);
+    }
     return;
+  }
 
   struct timeval tv;
   gettimeofday(&tv, nullptr);
@@ -1525,6 +1563,18 @@ void LvglClock::update_mode_cycle_() {
   // flip at :00.
   uint32_t t = (uint32_t) tv.tv_sec - CYCLE_OFFSET_S;
   uint32_t slot = t / this->cycle_interval_s_;
+
+  // Somebody picked a mode. Leave the wall alone until the interval ticks over,
+  // then the rotation resumes on its own - an override that lasted one loop
+  // would be no override at all, and one that lasted for ever would need its
+  // own "resume" button.
+  if (this->cycle_overridden_) {
+    if (slot == this->cycle_override_slot_) {
+      this->cycle_left_s_ = 1e9;
+      return;
+    }
+    this->cycle_overridden_ = false;
+  }
   // The window has to hold the whole gesture: fade in to the start pose, the
   // choreography itself, and the fade back to the time. So it CLOSES one fade
   // early - otherwise the settle would run on past the window and eat into the
@@ -1544,9 +1594,24 @@ void LvglClock::update_mode_cycle_() {
     ClockMode m = this->mode_;
     bool picked = false;
     for (size_t k = 0; k < n && !picked; k++) {
-      ClockMode cand = this->cycle_modes_[(slot + k) % n];
+      size_t idx = (slot + k) % n;
+      ClockMode cand = this->cycle_modes_[idx];
       if (cand == CC_MODE_TEMP && !this->temperature_ready_())
         continue;
+      // A pattern entry that names one selects it; a bare `pattern` takes the
+      // next in the store. Either way an empty slot is skipped rather than
+      // shown, since a pattern that has not arrived draws nothing.
+      if (cand == CC_MODE_PATTERN) {
+        int want = (idx < this->cycle_slots_.size()) ? this->cycle_slots_[idx] : -1;
+        if (want < 0) {
+          if (pattern_store().count() == 0)
+            continue;
+          want = (this->pattern_slot_ + 1) % pattern_store().count();
+        }
+        if (pattern_store().get(want) == nullptr)
+          continue;
+        this->set_pattern_slot(want);
+      }
       m = cand;
       picked = true;
     }

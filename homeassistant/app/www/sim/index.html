@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClockClock 24 — mode sandbox</title>
+<style>
+  :root {
+    --bg: #101114; --panel: #17191d; --line: #2a2d34; --ink: #e7e9ee;
+    --dim: #8b909b; --accent: #6ea8fe; --face: #1f1f23;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 14px 18px 10px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 0 2px; font-size: 15px; font-weight: 600; letter-spacing: .01em; }
+  header p { margin: 0; color: var(--dim); font-size: 12px; }
+  main { display: flex; flex-direction: column; gap: 18px; padding: 18px; }
+  #stage { width: 100%; }
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  @media (max-width: 980px) { .cols { grid-template-columns: 1fr; } }
+  canvas { width: 100%; height: auto; display: block; background: #000;
+           border: 1px solid var(--line); border-radius: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+          border-radius: 10px; padding: 12px 13px; }
+  .card h2 { margin: 0 0 9px; font-size: 11px; font-weight: 600; letter-spacing: .09em;
+             text-transform: uppercase; color: var(--dim); }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  button { font: inherit; color: var(--ink); background: #22252b; cursor: pointer;
+           border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+  button:hover { border-color: #3d424c; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #0b0d11; font-weight: 600; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:disabled:hover { border-color: var(--line); }
+  label { display: flex; justify-content: space-between; align-items: center;
+          gap: 8px; margin-bottom: 8px; color: var(--dim); }
+  label:last-child { margin-bottom: 0; }
+  label > span:last-child { color: var(--ink); font-variant-numeric: tabular-nums; min-width: 62px; text-align: right; }
+  input[type=range] { flex: 1 1 90px; accent-color: var(--accent); }
+  input[type=number], select { font: inherit; width: 84px; color: var(--ink);
+    background: #22252b; border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+  .row { display: flex; gap: 6px; }
+  .row button { flex: 1; }
+  code { background: #22252b; border-radius: 4px; padding: 1px 4px; font-size: 12px; }
+  .hint { color: var(--dim); font-size: 12px; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ClockClock 24 — mode sandbox</h1>
+  <p>The same engine as <code>components/lvgl_clock/lvgl_clock.cpp</code>, in the browser. Prototype a choreography here, then port it back.</p>
+</header>
+
+<main>
+  <div id="stage"><canvas id="wall" width="1600" height="600"></canvas></div>
+
+  <div class="cols">
+    <div class="col">
+    <div class="card">
+      <h2>Mode</h2>
+      <div class="modes" id="modes"></div>
+      <p class="hint">Switching never jumps — it runs the real entry blend, staggered by column.<br>
+        <b>*</b> = sandbox only, not yet in the firmware.</p>
+    </div>
+    <div class="card">
+      <h2>Transport</h2>
+      <div class="row">
+        <button id="play" aria-pressed="true">Pause</button>
+        <button id="restart">Restart mode</button>
+      </div>
+      <p class="hint" id="clockread"></p>
+    </div>
+    <div class="card">
+      <h2>Timing</h2>
+      <label><span>mode_speed</span><input type="range" id="speed" min="0.1" max="3" step="0.1" value="1"><span id="speedv">1.0</span></label>
+      <label><span>transition</span><input type="range" id="trans" min="0" max="10000" step="250" value="5000"><span id="transv">5.0 s</span></label>
+      <label><span>column stagger</span><input type="range" id="stag" min="0" max="800" step="25" value="250"><span id="stagv">250 ms</span></label>
+      <label><span>movement</span>
+        <select id="movement">
+          <option value="opposite" selected>opposite</option>
+          <option value="clockwise">clockwise</option>
+          <option value="counter">counter</option>
+          <option value="long">long</option>
+        </select>
+      </label>
+    </div>
+    <div class="card">
+      <h2>Face</h2>
+      <label><span>time</span><input type="number" id="hh" min="0" max="23" value="12" style="width:52px"><input type="number" id="mm" min="0" max="59" value="34" style="width:52px"></label>
+      <label><span>live clock</span><input type="checkbox" id="livetime"></label>
+      <label><span>temp °C</span><input type="number" id="temp" min="-9" max="99" value="21"></label>
+      <label><span>show faces</span><input type="checkbox" id="faces"></label>
+      <label><span>column ruler</span><input type="checkbox" id="ruler"></label>
+    </div>
+  </aside>
+    </div>
+    <div class="col">
+    <div class="card">
+      <h2>Edit — pose by hand</h2>
+      <div class="row">
+        <button id="edit" aria-pressed="false">Edit off</button>
+        <button id="park">Park all</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="tlall" title="Copy the top-left clock's two hand angles to all 24">Copy TL → all</button>
+      </div>
+      <p class="hint" id="editread">Click to select a clock. Drag again to swing a hand — snaps to 15°.
+        <b>Shift-click</b> to select several; edits then apply to all of them.</p>
+      <label><span>snap</span><select id="snap">
+        <option value="15" selected>15°</option>
+        <option value="5">5°</option>
+        <option value="45">45°</option>
+        <option value="1">1°</option>
+      </select></label>
+      <label><span>both hands</span><input type="checkbox" id="bothhands"></label>
+      <label><span>clock numbers</span><input type="checkbox" id="nums"></label>
+    </div>
+    </div>
+    <div class="col">
+    <div class="card" id="patcard" style="display:none">
+      <h2>Pattern — motion per clock</h2>
+      <p class="hint" id="patwho">Select a clock on the wall.</p>
+      <label><span>run motion while editing</span><input type="checkbox" id="patmotion" checked></label>
+
+      <label><span>hand A</span><span class="row" style="flex:0 0 auto">
+        <button class="dir" data-h="A" data-v="-1" title="counter-clockwise">←</button>
+        <button class="dir" data-h="A" data-v="0">—</button>
+        <button class="dir" data-h="A" data-v="1" title="clockwise">→</button>
+      </span></label>
+      <label><span>speed A</span><select id="spdmodeA">
+        <option value="fixed">fixed</option>
+        <option value="rel">same as…</option>
+      </select></label>
+      <label id="fixA"><span>value</span><input type="range" id="spdvA" min="0" max="1" step="0.005" value="0.55"><span id="spdvAv">0.30</span></label>
+      <label id="relA"><span>neighbour</span><select id="spdfromA">
+        <option value="left">left</option><option value="right">right</option>
+        <option value="up">up</option><option value="down">down</option>
+      </select></label>
+      <label id="relAd"><span>± per hop</span><input type="range" id="spddA" min="-0.45" max="0.45" step="0.005" value="-0.22"><span id="spddAv">-0.10</span></label>
+
+      <hr style="border:0;border-top:1px solid var(--line);margin:10px 0">
+
+      <label><span>hand B</span><span class="row" style="flex:0 0 auto">
+        <button class="dir" data-h="B" data-v="-1" title="counter-clockwise">←</button>
+        <button class="dir" data-h="B" data-v="0">—</button>
+        <button class="dir" data-h="B" data-v="1" title="clockwise">→</button>
+      </span></label>
+      <label><span>speed B</span><select id="spdmodeB">
+        <option value="fixed">fixed</option>
+        <option value="rel">same as…</option>
+      </select></label>
+      <label id="fixB"><span>value</span><input type="range" id="spdvB" min="0" max="1" step="0.005" value="0.55"><span id="spdvBv">0.30</span></label>
+      <label id="relB"><span>neighbour</span><select id="spdfromB">
+        <option value="left">left</option><option value="right">right</option>
+        <option value="up">up</option><option value="down">down</option>
+      </select></label>
+      <label id="relBd"><span>± per hop</span><input type="range" id="spddB" min="-0.45" max="0.45" step="0.005" value="-0.22"><span id="spddBv">-0.10</span></label>
+
+      <h2 style="margin-top:12px">Copy this clock to…</h2>
+      <div class="row">
+        <button id="pcopy">Copy</button>
+        <button id="ppaste">Paste</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="prow">its row</button>
+        <button id="pcol">its column</button>
+        <button id="pall">all 24</button>
+      </div>
+      <p class="hint" id="patclip">Nothing copied yet. <b>Shift-click</b> to select more than one — Paste fills them all.</p>
+
+      <div class="row" style="margin-top:8px">
+        <button id="prewind" title="Put every clock back on its pose, as before the motion started">Back to pose</button>
+        <button id="pseed" title="Take the wall's current angles as the pattern's pose">Pose from wall</button>
+      </div>
+      <p class="hint" id="posehint"></p>
+
+      <h2 style="margin-top:12px">Save / load</h2>
+      <div class="row">
+        <button id="psave" title="The whole configuration - poses and motion - as JSON">Export</button>
+        <button id="pload" title="Read a configuration back out of the box below">Load</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="pesp" title="Packed for a Home Assistant text entity - paste into Pattern 1..8">Copy for ESPHome</button>
+      </div>
+      <label style="margin-top:6px"><span>name</span><input type="text" id="pname" value="pattern" maxlength="15" style="width:96px"></label>
+      <p class="hint" id="ionote">Everything writes the box below and copies it. Paste a configuration back in and press Load.</p>
+      <textarea id="out" rows="7" spellcheck="false"
+        style="width:100%;margin-top:8px;background:#0e1013;color:#8fd0a0;border:1px solid var(--line);border-radius:6px;font:11px/1.45 ui-monospace,monospace;padding:6px;display:none"></textarea>
+    </div>
+    </div>
+  </div>
+</main>
+
+<script src="engine.js"></script>
+<script src="wall.js"></script>
+<script src="pattern.js"></script>
+<script>
+(function () {
+  const C = window.CC;
+  const cv = document.getElementById("wall"), ctx = cv.getContext("2d");
+  const wall = new C.Wall();
+
+  // ---- controls ------------------------------------------------------------
+  const modeBox = document.getElementById("modes");
+  const buttons = {};
+  Object.keys(C.MODES).forEach(k => {
+    const b = document.createElement("button");
+    b.textContent = C.MODES[k].label;
+    b.setAttribute("aria-pressed", String(k === wall.mode));
+    // Its name will not fit a half-width button, and it is not a choreography
+    // like the rest - give it the full row.
+    if (k === "pattern") b.style.gridColumn = "1 / -1";
+    b.onclick = () => {
+      wall.setMode(k, performance.now());
+      syncButtons();
+      // `pattern` has no code of its own - it draws whatever the editor holds,
+      // so there is nothing to look at until you are editing, and nothing to
+      // judge until it is moving. Turn both on.
+      if (k === "pattern") {
+        if (!editing) setEditing(true);
+        setRunning(true);
+      }
+      syncPattern();
+    };
+    modeBox.appendChild(b); buttons[k] = b;
+  });
+  const syncButtons = () => Object.keys(buttons).forEach(k =>
+    buttons[k].setAttribute("aria-pressed", String(k === wall.mode)));
+
+  const $ = id => document.getElementById(id);
+  let running = true;
+  function setRunning(on) {
+    running = on;
+    const b = $("play");
+    b.textContent = running ? "Pause" : "Play";
+    b.setAttribute("aria-pressed", String(running));
+    syncPattern();
+  }
+  $("play").onclick = () => setRunning(!running);
+  $("restart").onclick = () => { wall.animT = 0; };
+
+  $("speed").oninput = e => { wall.modeSpeed = +e.target.value; $("speedv").textContent = (+e.target.value).toFixed(1); };
+  $("trans").oninput = e => { wall.transitionMs = +e.target.value; $("transv").textContent = (e.target.value / 1000).toFixed(1) + " s"; };
+  $("stag").oninput  = e => { wall.staggerMs = +e.target.value; $("stagv").textContent = e.target.value + " ms"; };
+  $("movement").onchange = e => { wall.movement = e.target.value; };
+  $("temp").oninput = e => { wall.temp = +e.target.value; };
+
+  const pushTime = () => {
+    const hh = +$("hh").value, mm = +$("mm").value;
+    wall.setDigits([Math.floor(hh / 10), hh % 10, Math.floor(mm / 10), mm % 10], performance.now());
+  };
+  $("hh").oninput = pushTime; $("mm").oninput = pushTime;
+  pushTime();
+
+  // ---- rendering -----------------------------------------------------------
+  // Square outer tips, rounded pivot end, and wide enough to read as bars —
+  // the same look as CC_HAND_EXTRA_PX / CC_HAND_RADIUS_DIV in the firmware.
+  function drawClock(cx, cy, r, a0, a1, showFace) {
+    if (showFace) {
+      ctx.fillStyle = "#1f1f23";
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    }
+    const w = Math.max(2, r / 8);
+    ctx.strokeStyle = "#fff"; ctx.fillStyle = "#fff";
+    ctx.lineWidth = w; ctx.lineCap = "butt";
+    for (const a of [a0, a1]) {
+      const rad = (a - 90) * Math.PI / 180;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(rad) * r, cy + Math.sin(rad) * r);
+      ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(cx, cy, w / 2, 0, Math.PI * 2); ctx.fill();  // rounded pivot
+  }
+
+  let layout = null;   // set every frame, read by the pointer handlers
+
+  function render() {
+    const W = cv.width, H = cv.height;
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+
+    const gapDigit = 26;                       // extra space between digits
+    const cell = Math.min((W - gapDigit * 3 - 40) / C.WALL_COLS, (H - 40) / C.WALL_ROWS);
+    const r = cell * 0.46;
+    const totalW = cell * C.WALL_COLS + gapDigit * 3;
+    const x0 = (W - totalW) / 2 + cell / 2, y0 = (H - cell * C.WALL_ROWS) / 2 + cell / 2;
+    const showFace = $("faces").checked;
+    layout = { cell, r, centres: [] };
+
+    for (let c = 0; c < C.NUM_CLOCKS; c++) {
+      const { col, row } = C.wallPos(c);
+      const cx = x0 + col * cell + Math.floor(col / 2) * gapDigit;
+      const cy = y0 + row * cell;
+      layout.centres[c] = { x: cx, y: cy };
+      if (editing && selSet.has(c)) {
+        const primary = c === selClock;
+        ctx.strokeStyle = primary ? "#6ea8fe" : "#31537f";
+        ctx.lineWidth = primary ? 2 : 2;
+        ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.stroke();
+      }
+      drawClock(cx, cy, r, wall.cur[c * 2], wall.cur[c * 2 + 1], showFace);
+      if ($("nums").checked) {
+        ctx.fillStyle = "#6b7280"; ctx.font = "11px ui-monospace, monospace";
+        ctx.textAlign = "center"; ctx.fillText(String(c), cx, cy + r + 14);
+      }
+    }
+
+    if ($("ruler").checked) {
+      ctx.fillStyle = "#6ea8fe"; ctx.font = "13px ui-monospace, monospace"; ctx.textAlign = "center";
+      for (let col = 0; col < C.WALL_COLS; col++)
+        ctx.fillText("col " + col, x0 + col * cell + Math.floor(col / 2) * gapDigit, y0 - cell / 2 - 8);
+    }
+  }
+
+  // ---- edit mode -----------------------------------------------------------
+  // Swing a hand with the pointer. Everything here writes straight into
+  // wall.cur[], the same array the choreographies write, so a pose built by
+  // hand and a pose produced by code are the same thing.
+  // selSet is everything highlighted; selClock is the PRIMARY - the one the
+  // settings panel reads and writes. Shift-click adds to the set without
+  // disturbing what the panel is showing you.
+  let editing = false, selClock = -1, drag = null;
+  const selSet = new Set();
+
+  // The pattern editor is the one place where editing and running coexist.
+  // The speed sliders are SQUARED: position p gives speed p*p.
+  //
+  // A linear 0..1 slider spends nine tenths of its travel above 9 deg/s, which
+  // is the range you rarely want, and gives the slow end - where a pattern
+  // actually reads - a few pixels. Squaring flips that: half the travel now
+  // covers 0..22 deg/s. The readout is in deg/s throughout, so the curve is
+  // invisible; you are just aiming at the number you want.
+  const speedFromSlider = p => p * p;
+  const sliderFromSpeed = v => Math.sqrt(Math.max(0, v));
+  // Same idea, sign-preserving, for the per-hop offset.
+  const deltaFromSlider = p => Math.sign(p) * p * p;
+  const sliderFromDelta = d => Math.sign(d) * Math.sqrt(Math.abs(d));
+
+  const liveEditable = () => wall.mode === "pattern" && $("patmotion").checked;
+  // Is the pattern actually moving right now? Pose edits are only meaningful
+  // when it is not.
+  const motionRunning = () => running && liveEditable();
+
+  function setEditing(on) {
+    editing = on;
+    const b = $("edit");
+    b.textContent = editing ? "Edit ON" : "Edit off";
+    b.setAttribute("aria-pressed", String(editing));
+    cv.style.cursor = editing ? "crosshair" : "default";
+    // Freeze, or a running choreography fights whatever you pose - except in
+    // `pattern`, where the motion IS what you are editing.
+    if (editing && running && !liveEditable()) setRunning(false);
+    syncPattern();
+  }
+  $("edit").onclick = () => setEditing(!editing);
+  const freeze = () => { wall.blendState = 0; wall.animating = false; };
+  $("park").onclick = () => { wall.cur.fill(C.PARK); freeze(); };
+  // Clock 0 is row 0, col 0 - the top-left of the wall. Handy for starting a
+  // pose from a uniform wall, which is what every choreography wants at t=0.
+  $("tlall").onclick = () => {
+    const a = wall.cur[0], b = wall.cur[1];
+    for (let c = 0; c < C.NUM_CLOCKS; c++) { wall.cur[c * 2] = a; wall.cur[c * 2 + 1] = b; }
+    freeze();
+    $("editread").textContent = `copied top-left (${a.toFixed(0)}, ${b.toFixed(0)}) to all 24`;
+  };
+  $("snap").onchange = () => {};
+
+  const snapDeg = a => {
+    const s = +$("snap").value;
+    return ((Math.round(a / s) * s) % 360 + 360) % 360;
+  };
+  const evPos = e => {
+    const b = cv.getBoundingClientRect();
+    return { x: (e.clientX - b.left) * cv.width / b.width,
+             y: (e.clientY - b.top) * cv.height / b.height };
+  };
+  const angleTo = (p, o) => C.wrap360(Math.atan2(p.y - o.y, p.x - o.x) * 180 / Math.PI + 90);
+
+  function pick(p) {
+    if (!layout) return null;
+    let best = -1, bestD = layout.cell * 0.6;
+    for (let c = 0; c < C.NUM_CLOCKS; c++) {
+      const o = layout.centres[c];
+      const d = Math.hypot(p.x - o.x, p.y - o.y);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return best < 0 ? null : best;
+  }
+
+  cv.addEventListener("pointerdown", e => {
+    if (!editing) return;
+    const p = evPos(e), c = pick(p);
+    if (c === null) return;
+    // Shift adds to the selection and never drags - you are choosing targets,
+    // not posing.
+    if (e.shiftKey) {
+      if (selSet.has(c) && selSet.size > 1) selSet.delete(c);
+      else selSet.add(c);
+      if (!selSet.has(selClock)) selClock = selSet.values().next().value ?? -1;
+      else selClock = c;
+      syncPattern();
+      return;
+    }
+
+    // First click SELECTS ONLY. Clicking a clock to look at its settings was
+    // nudging a hand by however far the pointer sat from it, which quietly
+    // edited the pose every time you inspected something. Drag from an
+    // already-selected clock to move its hands.
+    const first = !(selSet.size === 1 && selSet.has(c));
+    selSet.clear(); selSet.add(c);
+    selClock = c;
+    syncPattern();
+    if (first) return;
+
+    const a = angleTo(p, layout.centres[c]);
+    // Grab whichever hand is already nearest the pointer, so you never have to
+    // aim at a 2 px line - anywhere in the clock works.
+    const d0 = Math.abs(C.shortestDelta(wall.cur[c * 2], a));
+    const d1 = Math.abs(C.shortestDelta(wall.cur[c * 2 + 1], a));
+    drag = { c, hand: d0 <= d1 ? 0 : 1, off: 0 };
+    if ($("bothhands").checked)
+      drag.off = C.shortestDelta(wall.cur[c * 2 + (drag.hand ? 0 : 1)], wall.cur[c * 2 + drag.hand]);
+    cv.setPointerCapture(e.pointerId);
+    applyDrag(p);
+  });
+  cv.addEventListener("pointermove", e => { if (drag) applyDrag(evPos(e)); });
+  cv.addEventListener("pointerup", () => { drag = null; });
+  cv.addEventListener("pointercancel", () => { drag = null; });
+
+  function applyDrag(p) {
+    const a = snapDeg(angleTo(p, layout.centres[drag.c]));
+    const other = C.wrap360(a - drag.off);
+    // Posing writes to the whole selection too - the same absolute angle on
+    // every one, which is how you set a row to a common pose in one drag.
+    eachSel(j => {
+      wall.cur[j * 2 + drag.hand] = a;
+      if ($("bothhands").checked) wall.cur[j * 2 + (drag.hand ? 0 : 1)] = other;
+    });
+    // In `pattern` the angles belong to the spec, not to the frame - otherwise
+    // the next tick would draw over whatever you just posed.
+    if (inPattern()) {
+      // Posing mid-blend has the same trap as rebasing: what is on screen is
+      // the pattern plus the blend. Only meaningful once the blend is done.
+      const ts = wall.animT * wall.modeSpeed;
+      eachSel(j => {
+        C.pattern.setHomeAt(j, drag.hand, a, ts);
+        if ($("bothhands").checked) C.pattern.setHomeAt(j, drag.hand ? 0 : 1, other, ts);
+      });
+    }
+    const { col, row } = C.wallPos(drag.c);
+    $("editread").textContent =
+      `clock ${drag.c} · col ${col} row ${row} · hand ${drag.hand} = ${a.toFixed(0)}°  ` +
+      `(${wall.cur[drag.c * 2].toFixed(0)}, ${wall.cur[drag.c * 2 + 1].toFixed(0)})`;
+  }
+
+  // ---- pattern editor --------------------------------------------------------
+  // Only reachable with Edit on: the card is hidden otherwise, because every
+  // control here writes into the selected clock and there is no selection when
+  // you are not editing.
+  const P = C.pattern;
+  let clip = null;                       // the copied clock, or null
+
+  function patTarget() { return editing && selClock >= 0 ? selClock : -1; }
+  // Every edit applies to the WHOLE selection, not just the primary. The
+  // primary is only which clock the controls read their current values from -
+  // there has to be one, or a multi-selection with different settings could
+  // not show anything.
+  const eachSel = fn => selSet.forEach(fn);
+
+  function syncPattern() {
+    const i = patTarget();
+    $("patcard").style.display = editing ? "block" : "none";
+    // `Back to pose` works whether or not the wall is moving: it re-cuts every
+    // anchor from the home pose, so the hands land on what you configured and
+    // carry on from there. Useful as a resync mid-run.
+    //
+    // `Pose from wall` does not: it captures whatever is on screen, and against
+    // a moving wall that is whatever instant you happened to click.
+    const live = motionRunning();
+    $("pseed").disabled = live;
+    $("posehint").textContent = live
+      ? "Back to pose re-syncs on the fly. Pause to capture a new pose."
+      : "Back to pose restores what you configured; Pose from wall captures what is on screen.";
+    if (i < 0) { $("patwho").textContent = "Select a clock on the wall."; return; }
+    const { col, row } = C.wallPos(i);
+    const sp = P.resolved()[i];
+    const extra = selSet.size > 1
+      ? ` <b>+${selSet.size - 1} more — edits apply to all ${selSet.size}</b>` : "";
+    $("patwho").innerHTML = `clock <b>${i}</b>${extra} · col ${col} row ${row} — ` +
+      `resolved speed <b>${sp[0].toFixed(2)}</b> / <b>${sp[1].toFixed(2)}</b> ` +
+      `(${(sp[0] * P.MAX_RATE).toFixed(0)} / ${(sp[1] * P.MAX_RATE).toFixed(0)} °/s)`;
+    const s = P.get(i);
+    document.querySelectorAll("button.dir").forEach(b => {
+      const cur = b.dataset.h === "A" ? s.dirA : s.dirB;
+      b.setAttribute("aria-pressed", String(+b.dataset.v === cur));
+    });
+    for (const h of ["A", "B"]) {
+      const spd = h === "A" ? s.spdA : s.spdB;
+      $("spdmode" + h).value = spd.mode;
+      $("fix" + h).style.display = spd.mode === "fixed" ? "flex" : "none";
+      $("rel" + h).style.display = spd.mode === "rel" ? "flex" : "none";
+      $("rel" + h + "d").style.display = spd.mode === "rel" ? "flex" : "none";
+      // Below 10 deg/s a whole degree is a visible difference, so show a
+      // decimal there and drop it once the number is big enough not to need it.
+      const perS = v => {
+        const d = v * P.MAX_RATE;
+        return (Math.abs(d) < 10 ? d.toFixed(1) : d.toFixed(0)) + "°/s";
+      };
+      if (spd.mode === "fixed") {
+        $("spdv" + h).value = sliderFromSpeed(spd.v);
+        $("spdv" + h + "v").textContent = perS(+spd.v);
+      } else {
+        $("spdfrom" + h).value = spd.from;
+        $("spdd" + h).value = sliderFromDelta(spd.d);
+        // Per HOP. The wall-wide total is this times the number of hops, which
+        // is what makes a big offset run the far end down to a standstill.
+        $("spdd" + h + "v").textContent = (spd.d > 0 ? "+" : "") + perS(+spd.d);
+      }
+    }
+  }
+
+  // Editing a pattern only makes sense while looking at it.
+  const inPattern = () => wall.mode === "pattern";
+
+  document.querySelectorAll("button.dir").forEach(b => b.onclick = () => {
+    const i = patTarget(); if (i < 0) return;
+    const key = b.dataset.h === "A" ? "dirA" : "dirB";
+    rebaseAll(() => eachSel(j => { P.get(j)[key] = +b.dataset.v; }));
+    syncPattern();
+  });
+  for (const h of ["A", "B"]) {
+    const key = h === "A" ? "spdA" : "spdB";
+    const setSpeed = make => {
+      if (patTarget() < 0) return;
+      // make() is called per clock so each gets its own object rather than a
+      // shared one - otherwise editing any of them later would move all.
+      rebaseAll(() => eachSel(j => { P.get(j)[key] = make(); }));
+      syncPattern();
+    };
+    const readFixed = () => ({ mode: "fixed", v: speedFromSlider(+$("spdv" + h).value) });
+    const readRel = () => ({ mode: "rel", from: $("spdfrom" + h).value,
+                             d: deltaFromSlider(+$("spdd" + h).value) });
+    $("spdmode" + h).onchange = e =>
+      setSpeed(() => (e.target.value === "fixed" ? readFixed() : readRel()));
+    $("spdv" + h).oninput = () => setSpeed(readFixed);
+    $("spdfrom" + h).onchange = $("spdd" + h).oninput = () => setSpeed(readRel);
+  }
+
+  // Change a speed or a direction and every hand would JUMP.
+  //
+  // An angle is pose + dir * speed * RATE * t, measured from t = 0 - so editing
+  // the speed retroactively rewrites the whole history: a clock that has been
+  // running 10 s at 0.5 leaps 270 deg the instant you nudge it to 0.8. And
+  // because speeds can be relative, one edit can move clocks that were not
+  // touched.
+  //
+  // So: remember where every hand is, apply the change, then re-anchor all 24
+  // poses so they are still there. The hands carry on from where they were, at
+  // the new speed. It is an analogue clock even while you are editing it.
+  const patScratch = new Float64Array(C.NUM_HANDS);
+  function rebaseAll(mutate) {
+    const ts = wall.animT * wall.modeSpeed;
+    // Capture the PATTERN'S OWN output, not wall.cur.
+    //
+    // wall.cur is the pattern plus whatever the entry blend or the settle is
+    // still adding on top. Anchoring to that bakes the blend into the pose, and
+    // the wall snaps by however much the blend was contributing the moment it
+    // finishes - measured at 135 deg. Anchoring to the pattern keeps the
+    // pattern continuous and lets the blend carry on doing its own thing.
+    C.tickPattern(patScratch, wall.animT, { modeSpeed: wall.modeSpeed });
+    mutate();
+    for (let i = 0; i < C.NUM_CLOCKS; i++) {
+      P.anchorAt(i, 0, patScratch[i * 2], ts);
+      P.anchorAt(i, 1, patScratch[i * 2 + 1], ts);
+    }
+  }
+
+  // Turning the motion back on picks up from where the hands are now, not from
+  // where they would have been had it never stopped.
+  $("patmotion").onchange = () => { rebaseAll(() => {}); syncPattern(); };
+
+  const note = t => { $("patclip").textContent = t; };
+  $("pcopy").onclick = () => {
+    const i = patTarget(); if (i < 0) return;
+    clip = P.copy(i); note(`Copied clock ${i} — pose and motion.`);
+  };
+  // The clipboard is never cleared - paste as many times as you like.
+  const paste = (fn, what) => () => {
+    const i = patTarget(); if (i < 0 || !clip) { note("Copy a clock first."); return; }
+    fn(i);
+    note(`Pasted to ${typeof what === "function" ? what() : what}. ` +
+         "Still holding it — paste again.");
+    syncPattern();
+  };
+  $("ppaste").onclick = paste(
+    () => selSet.forEach(j => P.paste(j, clip)),
+    () => selSet.size > 1 ? `${selSet.size} selected clocks` : "this clock");
+  $("prow").onclick  = paste(i => P.pasteRow(C.wallPos(i).row, clip), "the whole row");
+  $("pcol").onclick  = paste(i => P.pasteCol(C.wallPos(i).col, clip), "the whole column");
+  $("pall").onclick  = paste(() => P.pasteAll(clip), "all 24");
+  // Put every hand back on the pose it was configured with - not on wherever
+  // the anchor has drifted to. This is the one place a jump is intended: it is
+  // what "put it back" means.
+  // With the motion off the loop is not ticking, so nothing would redraw -
+  // push the pattern into the frame by hand.
+  const repaintPattern = () =>
+    C.tickPattern(wall.cur, wall.animT, { modeSpeed: wall.modeSpeed });
+
+  $("prewind").onclick = () => {
+    P.toHome(wall.animT * wall.modeSpeed);
+    repaintPattern();
+    note("Back to the configured poses.");
+  };
+  $("pseed").onclick = () => {
+    P.seedFrom(wall.cur, wall.animT * wall.modeSpeed);
+    repaintPattern();
+    note("Pose taken from the wall.");
+  };
+  $("pesp").onclick = () => {
+    const t = P.toESPHome($("pname").value);
+    showOut(t);
+    $("ionote").textContent =
+      `Copied — ${t.length} chars. Paste into a Pattern text entity in Home Assistant.`;
+  };
+  $("psave").onclick = () => {
+    showOut(P.toJSON());
+    $("ionote").textContent = "Exported — the box below is on your clipboard too.";
+  };
+  $("pload").onclick = () => {
+    const ta = $("out");
+    if (ta.style.display === "none" || !ta.value.trim()) {
+      ta.style.display = "block";
+      ta.value = "";
+      ta.focus();
+      $("ionote").textContent = "Paste a configuration into the box, then press Load again.";
+      return;
+    }
+    const err = P.fromJSON(ta.value, wall.animT * wall.modeSpeed);
+    if (err) { $("ionote").textContent = "Could not load: " + err; return; }
+    repaintPattern();
+    syncPattern();
+    $("ionote").textContent = "Loaded — 24 clocks replaced.";
+  };
+
+  // Export and Load both write here; nothing else does.
+  function showOut(text) {
+    const ta = $("out");
+    ta.style.display = "block"; ta.value = text; ta.select();
+    try { navigator.clipboard.writeText(text); } catch (_) {}
+  }
+
+  // ---- loop ----------------------------------------------------------------
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min((now - last) / 1000, 0.1);   // clamp, so a backgrounded tab does not leap
+    last = now;
+    // Editing normally freezes the wall so a posed hand stays put. The pattern
+    // editor is the exception: its controls are all about motion, and you
+    // cannot judge a speed you cannot see.
+    if (running && (!editing || liveEditable())) {
+      if ($("livetime").checked && wall.mode === "time") {
+        const d = new Date();
+        if (d.getMinutes() !== wall._lastMin) {
+          wall._lastMin = d.getMinutes();
+          $("hh").value = d.getHours(); $("mm").value = d.getMinutes();
+          pushTime();
+        }
+      }
+      wall.frame(now, dt);
+    }
+    $("clockread").textContent =
+      `t = ${wall.animT.toFixed(2)} s · ${wall.blendState ? "blending in" :
+        (wall.animating ? (wall.settleFrom !== "time" ? "settling to time" : "sweeping") : "steady")}`;
+    render();
+    requestAnimationFrame(loop);
+  }
+  syncPattern();          // populate the card's state before the first frame
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
