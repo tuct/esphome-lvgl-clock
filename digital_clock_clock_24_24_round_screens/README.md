@@ -548,6 +548,39 @@ runtime is one of its entities:
 All of it reaches the other seven boards over the bus. Nothing is recompiled
 and nothing is reflashed.
 
+#### Which means automations
+
+They are ordinary entities, so the wall does what any other device in the house
+does. A night mode is two service calls:
+
+```yaml
+automation:
+  - alias: "ClockClock — night"
+    trigger: { platform: sun, event: sunset, offset: "-00:30:00" }
+    action:
+      - service: text.set_value
+        target: { entity_id: text.cc24_board_d_hand_colour }
+        data: { value: "#ff7a2f" }          # warm amber, on the wire in one packet
+      - service: number.set_value
+        target: { entity_id: number.cc24_board_d_mode_speed }
+        data: { value: 0.6 }                # slower, so it is not the brightest
+                                            # moving thing in a dark room
+  - alias: "ClockClock — day"
+    trigger: { platform: sun, event: sunrise }
+    action:
+      - service: text.set_value
+        target: { entity_id: text.cc24_board_d_hand_colour }
+        data: { value: "#ffffff" }
+      - service: number.set_value
+        target: { entity_id: number.cc24_board_d_mode_speed }
+        data: { value: 1.0 }
+```
+
+The colour change is one broadcast packet, so all 24 clocks turn amber on the
+same frame rather than sweeping across the wall board by board. Same for a
+`text.set_value` on `…_cycle_modes` — a quiet rotation at night and the lively
+one by day is one automation, not a reflash.
+
 #### It survives a restart
 
 Movement, sweep length, speed, both colours, the cycle list and its interval
@@ -578,10 +611,14 @@ esphome:
     version: "1.1"
 ```
 
-**[The add-on](../homeassistant/README.md)** puts all of this on one page —
-with a live preview of what the wall is showing, the pattern editor, and
-full-screen views for tablets. Add this repository under **Settings → Add-ons →
-Repositories**.
+**[The add-on](../homeassistant/README.md)** puts all of this on one page, so
+none of it needs an entity id typed out: a live preview of what the wall is
+showing, the mode — **with your own patterns in the same list, by name** — the
+cycle list as chips you drag, the interval, the movement, the sweep length, the
+choreography speed and both colours. The **pattern editor** is on the same
+page, wired to a slot: draw a pattern, watch it, press **Send**, and 24 real
+clocks are running it a second later. Add this repository under **Settings →
+Add-ons → Repositories**.
 
 ### Motion patterns — design them in the browser
 

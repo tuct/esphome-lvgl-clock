@@ -134,12 +134,38 @@ There is a **[Home Assistant add-on](./homeassistant/README.md)**. Add this
 repository under **Settings → Add-ons → ⋮ → Repositories** and it appears in
 the store; install it and it is a sidebar item.
 
-**With a wall**, it is the control panel: a live preview of what the wall is
-showing, the mode, the pattern slot, the cycle list and its interval, the
-movement, the sweep length, the choreography speed and the colours — all set
-on the master and broadcast to the other seven boards, so an automation can
-warm the whole wall at sunset. It finds your master by itself, from
-a project marker the firmware carries, rather than guessing at entity names.
+**With a wall**, it is the control panel — and everything on it is live, on the
+wire, and reaches all 24 clocks in one packet:
+
+| | |
+|---|---|
+| **Colours** | Hands and background, live |
+| **Mode** | The choreographies **and your own patterns, in one list, by name** |
+| **Cycle list** | What it rotates through, in order — chips you drag |
+| **Cycle every** | How often a window opens, or `off` to hold a choice |
+| **Movement** · **Transition** · **Mode speed** | How a hand travels, how long a sweep takes, how fast a choreography runs |
+
+All of it is set on the master and broadcast to the other seven boards, and all
+of it is saved to flash — the wall comes back the way you left it after a power
+cut. It finds your master by itself, from a project marker the firmware
+carries, rather than guessing at entity names.
+
+Every one of those is an **ordinary Home Assistant entity**, so the wall
+automates like anything else in the house. A night mode is two service calls —
+warm the hands to amber at sunset and slow the choreographies down, back to
+white at sunrise:
+
+```yaml
+- service: text.set_value
+  target: { entity_id: text.cc24_board_d_hand_colour }
+  data: { value: "#ff7a2f" }
+- service: number.set_value
+  target: { entity_id: number.cc24_board_d_mode_speed }
+  data: { value: 0.6 }
+```
+
+Because the colour goes out as one broadcast, all 24 clocks turn together on
+the same frame rather than sweeping across the wall board by board.
 
 **Without one**, it is still a ClockClock 24: the **clock card** puts the whole
 wall in a dashboard, and a **display** is a full-screen page with its own link
@@ -149,6 +175,10 @@ with a canvas instead of panels.
 
 And the **pattern editor** is there too, wired to the wall: draw a pattern,
 watch it run, press **Send**, and 24 real clocks are running it a second later.
+It lands in one of eight slots on the master, under a name — and from then on
+that name sits in the Mode list beside `wave` and `spiral`, and can be dropped
+into the cycle list like any of them. Nothing is compiled and nothing is
+reflashed, not even the master.
 
 → [**Add-on and cards**](./homeassistant/README.md) ·
 [**Full documentation**](./homeassistant/DOCS.md)

@@ -49,23 +49,24 @@
   }
 
   // ---- chips -------------------------------------------------------------
-  function chips(host, options, current, onPick, label) {
+  function chips(host, options, current, onPick, label, after) {
     host.innerHTML = "";
     options.forEach(opt => {
       const value = typeof opt === "string" ? opt : opt.value;
       const b = document.createElement("button");
-      b.className = "chip";
+      b.className = "chip" + (opt.cls ? " " + opt.cls : "");
       b.type = "button";
       b.setAttribute("aria-pressed", String(value === current));
       b.innerHTML = typeof opt === "string" ? esc(opt) : opt.html;
-      if (label) b.title = `${label}: ${value}`;
+      if (opt.title) b.title = opt.title;
+      else if (label) b.title = `${label}: ${value}`;
       b.onclick = async () => {
         if (b.getAttribute("aria-pressed") === "true") return;
         host.querySelectorAll(".chip").forEach(c => c.classList.add("busy"));
         try { await onPick(value); }
         catch (err) { setLive("err", `<b>Failed.</b> ${esc(err.message)}`); }
         finally { host.querySelectorAll(".chip").forEach(c => c.classList.remove("busy")); }
-        refresh();
+        (after || refresh)();
       };
       host.appendChild(b);
     });
@@ -99,12 +100,66 @@
     };
   }
 
+  // The same slider the wall uses, but driven by a plain value rather than an
+  // entity - a display is stored in the add-on, not on the master.
+  function plainSlider(el, out, opts) {
+    el.min = opts.min; el.max = opts.max; el.step = opts.step;
+    if (document.activeElement !== el) el.value = opts.value;
+    out.textContent = opts.fmt(el.value);
+    el.oninput = () => { out.textContent = opts.fmt(el.value); };
+    el.onchange = () => opts.onChange(Number(el.value));
+  }
+
   const esc = s => String(s).replace(/[&<>"]/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   // Mode names are snake_case in the firmware because they are also the wire
   // format. Reading them is nicer than typing them.
   const pretty = m => m.replace(/_/g, " ");
+
+  // ---- patterns as modes -------------------------------------------------
+  // The slots that have something in them. An empty one draws nothing, so it
+  // is not something to offer - and the name is the pattern's own, because "3"
+  // tells you nothing.
+  function namedPatterns() {
+    if (!board) return [];
+    return board.slots
+      .filter(s => s.state)
+      .map(s => ({ slot: s.slot, name: s.state.split(":")[0] || `pattern ${s.slot}` }));
+  }
+
+  const curSlot = () => {
+    const p = board && board.controls.pattern_slot;
+    return p ? Number(p.state) || 0 : 0;
+  };
+
+  // The name of whatever the wall is showing, in the same vocabulary the lists
+  // use - so `pattern` reads back as the pattern it is actually drawing.
+  function showing() {
+    const c = board ? board.controls : {};
+    if (!c.mode) return null;
+    if (c.mode.state !== "pattern") return c.mode.state;
+    const p = namedPatterns().find(x => x.slot === curSlot());
+    return p ? p.name : "pattern";
+  }
+
+  // One click, whichever kind of thing was picked. A pattern is two writes -
+  // the slot first, so the wall never spends a frame drawing the pattern that
+  // happened to be loaded before.
+  async function pickMode(v) {
+    const c = board.controls;
+    if (v.indexOf("pattern:") === 0) {
+      const slot = v.slice(8);
+      if (c.pattern_slot && c.pattern_slot.state !== slot)
+        await call("select", "select_option",
+                   { entity_id: c.pattern_slot.entity_id, option: slot });
+      if (c.mode.state !== "pattern")
+        await call("select", "select_option",
+                   { entity_id: c.mode.entity_id, option: "pattern" });
+      return;
+    }
+    await call("select", "select_option", { entity_id: c.mode.entity_id, option: v });
+  }
 
   // ---- render ------------------------------------------------------------
   function render() {
@@ -128,26 +183,26 @@
     syncPreview();
     $("wallhint").textContent = [board.model, board.sw].filter(Boolean).join(" · ");
 
-    // Mode
+    // Mode - the firmware's modes and your own patterns in ONE list. `pattern`
+    // was never a thing anyone wanted to pick on its own: it always meant a
+    // particular pattern, and saying which one took a second control and a
+    // second click. A pattern the wall is holding is a mode, so it sits here.
     $("f-mode").classList.toggle("hidden", !c.mode);
     if (c.mode) {
-      chips($("modes"), c.mode.options.map(o => ({ value: o, html: esc(pretty(o)) })),
-        c.mode.state,
-        v => call("select", "select_option", { entity_id: c.mode.entity_id, option: v }),
-        "mode");
-    }
-
-    // Which pattern slot `pattern` draws - labelled with the pattern's own
-    // name where there is one, because "3" tells you nothing.
-    $("f-slot").classList.toggle("hidden", !c.pattern_slot);
-    if (c.pattern_slot) {
-      chips($("slotpick"), c.pattern_slot.options.map(o => {
-        const slot = board.slots[Number(o) - 1];
-        const name = slot && slot.state ? slot.state.split(":")[0] : "";
-        return { value: o, html: `<span class="n">${esc(o)}</span>${name ? " · " + esc(name) : ""}` };
-      }), c.pattern_slot.state,
-        v => call("select", "select_option", { entity_id: c.pattern_slot.entity_id, option: v }),
-        "pattern");
+      const pats = namedPatterns();
+      const opts = c.mode.options
+        // The bare entry survives only when there is nothing to replace it
+        // with - a wall whose slots are all still empty, where it is the only
+        // way in.
+        .filter(o => o !== "pattern" || !pats.length)
+        .map(o => ({ value: o, html: esc(pretty(o)) }))
+        .concat(pats.map(p => ({
+          value: "pattern:" + p.slot, cls: "pat",
+          title: `pattern ${p.slot}`, html: esc(p.name),
+        })));
+      const slot = curSlot();
+      const cur = c.mode.state === "pattern" && slot ? "pattern:" + slot : c.mode.state;
+      chips($("modes"), opts, cur, pickMode, "mode");
     }
 
     // Cycle interval
@@ -316,23 +371,29 @@
   // accepted - but nobody should have to edit it by hand to move `wind` one
   // place left.
   let cycle = [];
+  // Which names in the list are patterns rather than firmware modes. Only used
+  // to mark them; the master neither knows nor cares about the difference.
+  let patternNames = [];
 
   function syncCycle(c) {
     cycle = (c.cycle_modes.state || "").split(",").map(s => s.trim()).filter(Boolean);
     $("cycleinput").value = cycle.join(",");
-    // What you can add: every mode the wall knows, plus the patterns that have
-    // something in them - a cycle list takes either.
+    // What you can add: every mode the wall knows and every pattern that has
+    // something in it, in ONE list rather than a modes list with a patterns
+    // annexe. The master takes either by name, so the distinction was ours,
+    // not its.
+    //
+    // The bare `pattern` entry stays, because in a cycle list it means
+    // something no named entry does: take the NEXT one in the store each time
+    // round. Labelled, since that is not guessable from the word.
     const modes = c.mode ? c.mode.options : [];
-    const named = board.slots
-      .filter(s => s.state)
-      .map(s => s.state.split(":")[0])
-      .filter(n => n && !modes.includes(n));
+    patternNames = namedPatterns().map(p => p.name).filter(n => !modes.includes(n));
     const keep = $("cycleadd").value;
     $("cycleadd").innerHTML =
-      modes.map(m => `<option value="${esc(m)}">${esc(pretty(m))}</option>`).join("") +
-      (named.length ? `<optgroup label="patterns">` + named.map(n =>
-        `<option value="${esc(n)}">${esc(n)}</option>`).join("") + `</optgroup>` : "");
-    if ([...modes, ...named].includes(keep)) $("cycleadd").value = keep;
+      modes.map(m => `<option value="${esc(m)}">${esc(pretty(m))}${
+        m === "pattern" ? " — next in the store" : ""}</option>`).join("") +
+      patternNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+    if ([...modes, ...patternNames].includes(keep)) $("cycleadd").value = keep;
     drawCycle();
   }
 
@@ -350,7 +411,9 @@
       host.innerHTML = list.length
         ? list.map((m, i) =>
             `<span class="tag${m === api.now ? " now" : ""}${i === state.drag ? " dragging" : ""}"` +
-            ` data-i="${i}"><span class="i">${i + 1}</span>${esc(pretty(m))}` +
+            ` data-i="${i}"><span class="i">${i + 1}</span>` +
+            (opts.isPattern && opts.isPattern(m) ? `<span class="dot"></span>` : "") +
+            `${esc(pretty(m))}` +
             `<button class="x" title="Remove" aria-label="Remove ${esc(m)}">&times;</button></span>`).join("")
         : `<span class="tag empty">${esc(opts.empty)}</span>`;
       host.querySelectorAll(".tag[data-i]").forEach(el => {
@@ -392,9 +455,12 @@
         get: () => cycle,
         set: (l, quiet) => { cycle = l; if (!quiet) commitCycle(); },
         empty: "empty — the wall stays on whatever Mode says",
+        isPattern: m => patternNames.includes(m),
       });
     }
-    cycleChips.now = board && board.controls.mode ? board.controls.mode.state : null;
+    // `showing()`, not the raw mode: an entry that names a pattern would never
+    // light up against a mode state of `pattern`.
+    cycleChips.now = showing();
     cycleChips.draw();
   }
 
@@ -481,8 +547,16 @@
   // restarts and updates.
   let displays = [];
 
-  const MODE_CHOICES = ["cycle", "time", "rotate_left", "flying_birds", "wave", "spiral",
-                        "wind", "rotating_maze", "zipper", "mirror_wave", "love", "pattern"];
+  // A display runs the card, not the wall: no `temp` (there is no sensor
+  // behind it) and no `pattern` (the slots live on the master). Everything
+  // else is the same set the wall offers, presented the same way.
+  const DISPLAY_MODES = ["cycle", "time", "rotate_left", "flying_birds", "wave",
+                         "spiral", "wind", "rotating_maze", "zipper",
+                         "mirror_wave", "love"];
+  const INTERVALS = [30, 60, 120, 180, 300, 600, 900, 1800, 3600];
+  const MOVEMENTS = ["opposite", "clockwise", "counter", "long"];
+
+  const secLabel = s => (s < 60 ? s + " s" : (s / 60) + " min");
 
   function displayUrl(d) {
     return "display.html?d=" + encodeURIComponent(d.id);
@@ -504,101 +578,144 @@
           <button class="ghost small" data-act="copy">Copy link</button>
           <button class="ghost small" data-act="del" title="Remove this display">Remove</button>
         </div>
-        <div class="grid">
-          <label><span>Follows</span>
-            <select data-k="board">
+
+        <div class="field">
+          <div class="flabel">Follows<span class="fnote">mirror a real wall, or run on its own</span></div>
+          <div class="inline">
+            <div class="selwrap"><select data-k="board">
               <option value="">nothing — runs on its own</option>
               ${devices.map(v => `<option value="${esc(v.device_id)}"${
                 v.device_id === d.board ? " selected" : ""}>${esc(v.device)}</option>`).join("")}
-            </select></label>
-          <label><span>Shows</span>
-            <select data-k="mode">
-              ${MODE_CHOICES.map(m => `<option value="${m}"${
-                m === d.mode ? " selected" : ""}>${esc(pretty(m))}</option>`).join("")}
-            </select></label>
-          <label><span>Cycle every (s)</span>
-            <input type="number" data-k="cycle_interval" min="5" max="3600" value="${d.cycle_interval}"></label>
-          <label><span>Digit gap</span>
-            <input type="number" data-k="digit_gap" min="0" max="2" step="0.05" value="${d.digit_gap}"></label>
-          <label><span>Mode speed (×)</span>
-            <input type="number" data-k="mode_speed" min="0.1" max="5" step="0.1" value="${d.mode_speed}"></label>
-          <label><span>Transition (s)</span>
-            <input type="number" data-k="transition_s" min="0.2" max="60" step="0.1"
-                   value="${(d.transition / 1000).toFixed(1)}"></label>
-          <label><span>Window (s)</span>
-            <input type="number" data-k="window" min="2" max="3600" value="${d.window}"></label>
-          <label><span>Movement</span>
-            <select data-k="movement">
-              ${["opposite","clockwise","counter","long"].map(m =>
-                `<option value="${m}"${m === d.movement ? " selected" : ""}>${esc(m)}</option>`).join("")}
-            </select></label>
+            </select></div>
+            <label class="chk"><input type="checkbox" data-k="mirror"${
+              d.mirror ? " checked" : ""}> follow its mode and colours</label>
+          </div>
         </div>
-        <div class="dcycle">
+
+        <div class="field">
+          <div class="flabel">Mode<span class="fnote">what this screen shows</span></div>
+          <div class="chips" data-chips="mode" data-n="${n}"></div>
+        </div>
+
+        <div class="split">
+          <div class="field">
+            <div class="flabel">Cycle every</div>
+            <div class="chips tight" data-chips="interval" data-n="${n}"></div>
+          </div>
+          <div class="field">
+            <div class="flabel">Window<span class="fnote">seconds of choreography</span></div>
+            <div class="sliderrow"><input type="range" data-sl="window" data-n="${n}"><output></output></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="flabel">Movement<span class="fnote">how the hands travel to a new digit</span></div>
+          <div class="chips tight" data-chips="movement" data-n="${n}"></div>
+        </div>
+
+        <div class="split">
+          <div class="field">
+            <div class="flabel">Transition</div>
+            <div class="sliderrow"><input type="range" data-sl="transition" data-n="${n}"><output></output></div>
+          </div>
+          <div class="field">
+            <div class="flabel">Mode speed</div>
+            <div class="sliderrow"><input type="range" data-sl="mode_speed" data-n="${n}"><output></output></div>
+          </div>
+        </div>
+
+        <div class="field">
           <div class="flabel">Cycle list<span class="fnote">drag to reorder — empty uses the card's own six</span></div>
           <div class="taglist" data-cycle="${n}"></div>
           <div class="addrow">
-            <div class="selwrap"><select data-cycleadd="${n}">${MODE_CHOICES
-              .filter(m => m !== "cycle")
+            <div class="selwrap"><select data-cycleadd="${n}">${DISPLAY_MODES
+              .filter(m => m !== "cycle" && m !== "time")
               .map(m => `<option value="${m}">${esc(pretty(m))}</option>`).join("")}</select></div>
             <button class="ghost small" data-cycleaddbtn="${n}">Add</button>
           </div>
         </div>
-        <div class="swatches">
-          <label><input type="checkbox" data-k="mirror"${d.mirror ? " checked" : ""}> Follow the wall's mode</label>
-          <label><input type="checkbox" data-k="return_to_time"${d.return_to_time ? " checked" : ""}> Back to the time between windows</label>
-          <label><input type="color" data-k="hand_color" value="${esc(d.hand_color)}"> Hands</label>
-          <label><input type="color" data-k="background" value="${esc(d.background)}"> Background</label>
-          <label><input type="checkbox" data-k="show_face"${d.show_face ? " checked" : ""}> Faces</label>
-          <label><input type="color" data-k="face_color" value="${esc(d.face_color)}"> Face</label>
+
+        <div class="field">
+          <div class="flabel">Look<span class="fnote">this screen only</span></div>
+          <div class="swatchrow">
+            <label><input type="color" data-k="hand_color" value="${esc(d.hand_color)}"> Hands</label>
+            <label><input type="color" data-k="background" value="${esc(d.background)}"> Background</label>
+            <label class="chk"><input type="checkbox" data-k="show_face"${d.show_face ? " checked" : ""}> Faces</label>
+            <label><input type="color" data-k="face_color" value="${esc(d.face_color)}"> Face</label>
+            <label class="chk"><input type="checkbox" data-k="return_to_time"${
+              d.return_to_time ? " checked" : ""}> back to the time between windows</label>
+          </div>
+          <div class="sliderrow" style="margin-top:12px">
+            <span class="slabel">Digit gap</span>
+            <input type="range" data-sl="digit_gap" data-n="${n}"><output></output>
+          </div>
         </div>
       </div>`).join("");
 
     host.querySelectorAll(".display").forEach(el => {
       const n = Number(el.dataset.n);
+      const d = displays[n];
+      const save = () => saveDisplays();
+
       el.querySelectorAll("[data-k]").forEach(inp => {
         inp.onchange = () => {
-          const k = inp.dataset.k;
-          const v = inp.type === "checkbox" ? inp.checked
-                  : inp.type === "number" ? Number(inp.value) : inp.value;
-          // Seconds in the box, milliseconds in the config - the card takes ms
-          // and nobody thinks about a sweep in milliseconds.
-          if (k === "transition_s") displays[n].transition = Math.round(v * 1000);
-          else displays[n][k] = v;
-          saveDisplays();
+          d[inp.dataset.k] = inp.type === "checkbox" ? inp.checked : inp.value;
+          save();
         };
       });
 
-      // Each display gets the same draggable cycle list as the wall.
-      const tags = el.querySelector(`[data-cycle="${n}"]`);
-      const chips = chipList(tags, {
-        get: () => (displays[n].cycle || "").split(",").map(s => s.trim()).filter(Boolean),
-        set: (l, quiet) => {
-          displays[n].cycle = l.join(",");
-          if (!quiet) saveDisplays();
-        },
-        empty: "empty — the card cycles its own six",
-      });
-      chips.draw();
-      el.querySelector(`[data-cycleaddbtn="${n}"]`).onclick = () => {
-        const v = el.querySelector(`[data-cycleadd="${n}"]`).value;
-        const l = (displays[n].cycle || "").split(",").map(s => s.trim()).filter(Boolean);
-        l.push(v);                    // repeats are meaningful here too
-        displays[n].cycle = l.join(",");
-        chips.draw();
-        saveDisplays();
-      };
+      const pick = (what, options, current, key, map) =>
+        chips(el.querySelector(`[data-chips="${what}"]`), options, current,
+              v => { d[key] = map ? map(v) : v; save(); }, what,
+              () => renderDisplays());
+
+      pick("mode", DISPLAY_MODES.map(m => ({ value: m, html: esc(pretty(m)) })), d.mode, "mode");
+      pick("interval", INTERVALS.map(s => ({ value: String(s), html: esc(secLabel(s)) })),
+           String(d.cycle_interval), "cycle_interval", v => Number(v));
+      pick("movement", MOVEMENTS.map(m => ({ value: m, html: esc(m) })), d.movement, "movement");
+
+      const sl = (what, opts) => plainSlider(
+        el.querySelector(`[data-sl="${what}"]`),
+        el.querySelector(`[data-sl="${what}"]`).nextElementSibling, opts);
+      sl("window", { min: 5, max: 180, step: 1, value: d.window,
+                     fmt: v => v + " s", onChange: v => { d.window = v; save(); } });
+      sl("transition", { min: 0.2, max: 20, step: 0.1, value: d.transition / 1000,
+                         fmt: v => Number(v).toFixed(1) + " s",
+                         onChange: v => { d.transition = Math.round(v * 1000); save(); } });
+      sl("mode_speed", { min: 0.1, max: 5, step: 0.1, value: d.mode_speed,
+                         fmt: v => "×" + Number(v).toFixed(1),
+                         onChange: v => { d.mode_speed = v; save(); } });
+      sl("digit_gap", { min: 0, max: 1, step: 0.05, value: d.digit_gap,
+                        fmt: v => Number(v) === 0 ? "none (like the wall)" : Number(v).toFixed(2),
+                        onChange: v => { d.digit_gap = v; save(); } });
+
       el.querySelector('[data-act="del"]').onclick = () => {
-        if (!confirm(`Remove "${displays[n].name}"? Any tablet pointed at it will stop working.`)) return;
+        if (!confirm(`Remove "${d.name}"? Any tablet pointed at it will stop working.`)) return;
         displays.splice(n, 1);
         saveDisplays().then(renderDisplays);
       };
       el.querySelector('[data-act="copy"]').onclick = async (ev) => {
         // The absolute URL, including the Ingress prefix - a relative one is
         // useless on the tablet you are about to paste it into.
-        const url = new URL(displayUrl(displays[n]), location.href).href;
+        const url = new URL(displayUrl(d), location.href).href;
         try { await navigator.clipboard.writeText(url); ev.target.textContent = "Copied"; }
         catch { prompt("Copy this link:", url); }
         setTimeout(() => { ev.target.textContent = "Copy link"; }, 1400);
+      };
+
+      const chipsHost = el.querySelector(`[data-cycle="${n}"]`);
+      const cyc = chipList(chipsHost, {
+        get: () => (d.cycle || "").split(",").map(s => s.trim()).filter(Boolean),
+        set: (l, quiet) => { d.cycle = l.join(","); if (!quiet) save(); },
+        empty: "empty — the card cycles its own six",
+      });
+      cyc.draw();
+      el.querySelector(`[data-cycleaddbtn="${n}"]`).onclick = () => {
+        const l = (d.cycle || "").split(",").map(s => s.trim()).filter(Boolean);
+        l.push(el.querySelector(`[data-cycleadd="${n}"]`).value);
+        d.cycle = l.join(",");
+        cyc.draw();
+        save();
       };
     });
   }

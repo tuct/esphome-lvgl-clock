@@ -15,8 +15,13 @@ wall in a dashboard, and **Full screen** at the top of the panel opens a
 full-bleed version for a wall tablet — no dashboard, no card resource, nothing
 to configure. It runs the same engine as the firmware.
 
-**Driving the real wall, if you built one.** Mode, pattern slot, cycle
-interval, the cycle list, and eight pattern slots you can draw into.
+**Driving the real wall, if you built one.** The mode — with your own patterns
+in the same list, by name — the cycle list and how often it turns over, the
+movement, the sweep length, the choreography speed, and the hand and background
+colours. All of it set on the master, broadcast to the other seven boards and
+saved to flash; all of it ordinary entities underneath, so an automation can
+run the wall warm and slow at night. Plus eight pattern slots you can draw
+into.
 
 ## Options
 
@@ -63,10 +68,9 @@ the page's, because it picks what this panel acts on.
 
 | | |
 |---|---|
-| **Mode** | What the wall is doing right now, and a way to change it. This is an **override**: with a cycle interval set, the next window opens on schedule and takes the wall back. Set the interval to `off` to make a choice stick. |
-| **Pattern** | Which slot `pattern` mode draws. Each chip is labelled with that slot's own pattern name, because "3" tells you nothing. Empty slots fall back to showing the time. |
+| **Mode** | What the wall is doing right now, and a way to change it. **Your own patterns are in this list too**, by name and marked with a dot — picking one sets the slot and the mode together. This is an **override**: with a cycle interval set, the next window opens on schedule and takes the wall back. Set the interval to `off` to make a choice stick. |
 | **Cycle every** | How often a window opens. The 35 s window itself is fixed — only the cadence is yours. `off` stops the rotation entirely. |
-| **Cycle list** | The rotation, in order. **Repeats count**: listing `temp` every other entry gives it half the slots. The chip matching the current mode is outlined. |
+| **Cycle list** | The rotation, in order — modes and patterns in the same list, since the master takes either by name. **Repeats count**: listing `temp` every other entry gives it half the slots. The chip matching what the wall is drawing is outlined. The `pattern — next in the store` entry is the one that is not a name: it takes the following pattern each time round. |
 | **Movement** | How the two hands travel to a new digit — `opposite` (the ClockClock look, hands arriving from either side), `clockwise`, `counter`, or `long`. |
 | **Transition** | How long a sweep takes, and how long a mode takes to fade in. The 35 s choreography window itself is fixed. |
 | **Mode speed** | Choreography rate, ×1 is the base. |
@@ -96,16 +100,23 @@ A **display** is a full-screen page with its own link and its own look: black,
 edge to edge, controls fading out after three seconds. Point a tablet at one
 and leave it there.
 
-**Add display** makes one. Each has:
+**Add display** makes one. It is configured with the **same controls as the
+wall** — chips for a choice, a slider for a range — because they are the same
+decisions:
 
 | | |
 |---|---|
-| **Follows** | Which board it watches, or nothing — then it runs on its own |
-| **Follow the wall's mode** | On, it mirrors what the wall is doing. Off, it cycles independently |
-| **Shows** | A fixed mode, or `cycle` |
-| **Cycle every** | Seconds between windows |
-| **Digit gap** | Space between digits, in clock widths. `0` matches the real wall |
-| **Hands / Background / Faces** | Its own colours — a hall tablet and a desk screen do not have to match |
+| **Follows** | Which board it watches, or nothing. With *follow its mode and colours* on it mirrors the wall; off, it runs independently |
+| **Mode** | A fixed choreography, or `cycle`. No `temp` (there is no sensor behind a browser) and no `pattern` (the slots live on the master) |
+| **Cycle every** | How often a window opens |
+| **Window** | Seconds of choreography per window |
+| **Movement** | `opposite` / `clockwise` / `counter` / `long` |
+| **Transition** | Sweep time, and the fade into a mode |
+| **Mode speed** | Choreography rate, ×1 is the base |
+| **Cycle list** | Its own rotation — drag to reorder, × to remove, Add to append. Empty means the card's own six |
+| **Look** | Hands, background, faces, digit gap, and whether it returns to the time between windows. A hall tablet and a desk screen do not have to match |
+
+`digit_gap: 0` matches the real wall, which is 24 evenly-spaced panels.
 
 **Copy link** gives you the full URL including the Ingress prefix, which is
 what a tablet needs. They are stored in the add-on's own `/data`, so they

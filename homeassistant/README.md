@@ -30,9 +30,18 @@ is in the sidebar — Ingress, so there is no port to open and no second login.
 **Full screen** opens a full-bleed version for a tablet — no dashboard, no card
 resource, nothing to configure. Same engine as the firmware.
 
-**Runs the real wall.** Mode, pattern slot, cycle interval and the cycle list, as
-chips rather than rows — and it follows the wall, so a cycle moving the mode on
-shows up without a refresh.
+**Runs the real wall.** Everything the wall does at runtime, as chips and
+sliders rather than rows of fields: the **mode** — with your own patterns in the
+same list, by name, so picking one is a click rather than a mode plus a slot —
+the **cycle list** you drag into order, how often it **cycles**, the
+**movement**, the **sweep length**, the **choreography speed**, and both
+**colours**. It follows the wall too, so a cycle moving the mode on shows up
+without a refresh.
+
+Every one of those is set on the master and broadcast to the other seven
+boards, saved to flash so a power cut does not undo it — and every one is an
+ordinary entity underneath, so an automation can warm the hands to amber at
+sunset and slow the choreographies down for the night.
 
 **Draws patterns.** The editor is the real firmware engine running in the
 browser: the same choreographies, the same easing, the same 24-clock geometry.

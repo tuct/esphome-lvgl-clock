@@ -154,6 +154,16 @@ main { max-width: 74rem; margin: 0 auto; padding: 22px; display: grid; gap: 18px
 }
 .chip.busy { opacity: .5; cursor: progress; }
 .chip .n { font-variant-numeric: tabular-nums; }
+/* A pattern sitting in a list of modes. As far as the wall is concerned it IS
+   one - the dot is only so you can tell which of them you drew yourself. */
+.chip.pat { display: inline-flex; align-items: center; gap: 7px; }
+.chip.pat::before, .tag .dot, .fnote .dot {
+  content: ""; display: inline-block; width: 5px; height: 5px; flex: none;
+  border-radius: 50%; background: var(--accent);
+}
+.chip.pat[aria-pressed="true"]::before { background: var(--accent-ink); opacity: .7; }
+.tag .dot { margin: 0 -2px; }
+.fnote .dot { vertical-align: middle; }
 .chip.empty { opacity: .5; font-style: italic; }
 
 /* With no board chosen the controls have nothing to act on - hide them and
@@ -255,29 +265,27 @@ pre { background: var(--panel-2); border: 1px solid var(--line-soft);
 .recipe .copy.done { color: var(--ok); border-color: var(--ok); }
 
 /* ---- displays ---------------------------------------------------------- */
-.display { border-bottom: 1px solid var(--line-soft); padding: 14px 18px; }
+/* A display is configured with the same vocabulary as the wall - chips for a
+   choice, a slider for a range - because it is the same set of decisions. A
+   second visual language for the same ideas is just something else to learn. */
+.display { border-bottom: 1px solid var(--line); }
 .display:last-child { border-bottom: 0; }
-.display .top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.display .top input.nm { font-weight: 600; min-width: 10rem; }
-.display .grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: 10px 14px; margin-top: 12px;
+.display .top {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 13px 18px; background: var(--panel-2);
+  border-bottom: 1px solid var(--line-soft);
 }
-.display .grid label { display: flex; flex-direction: column; gap: 5px; align-items: stretch; }
-.display .grid label span { color: var(--ink-faint); font-size: 11.5px; }
-.display .grid input, .display .grid select { width: 100%; }
-.display .dcycle { margin-top: 12px; padding-top: 12px;
-                   border-top: 1px dashed var(--line-soft); }
-.display .dcycle .flabel { margin-bottom: 8px; }
-.display .swatches { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px;
-  padding-top: 12px; border-top: 1px dashed var(--line-soft); }
-.display .swatches label { display: flex; gap: 7px; align-items: center;
-  color: var(--ink-dim); font-size: 12.5px; }
+.display .top input.nm { font-weight: 600; min-width: 11rem; }
+.display .spacer { flex: 1; }
+.display .field { padding: 13px 18px; }
+.display .inline { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.display label.chk { display: inline-flex; gap: 7px; align-items: center;
+                     color: var(--ink-dim); font-size: 12.5px; }
+.display .sliderrow .slabel { color: var(--ink-dim); font-size: 12.5px; min-width: 5rem; }
 .display input[type=color] {
-  width: 30px; height: 24px; padding: 0; border-radius: 5px; cursor: pointer;
+  width: 32px; height: 25px; padding: 0; border-radius: 5px; cursor: pointer;
   background: none; border: 1px solid var(--line);
 }
-.display .spacer { flex: 1; }
 .empty-note { padding: 16px 18px; color: var(--ink-faint); font-size: 13px; }
 
 /* ---- banner ------------------------------------------------------------ */

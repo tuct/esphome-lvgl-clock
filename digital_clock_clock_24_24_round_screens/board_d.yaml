@@ -206,6 +206,72 @@ text:
           id(sync_out).set_pattern_text(1, x);
           id(pattern_2).publish_state(id(sync_out).get_pattern_text(1));
     update_interval: 60s
+  - platform: template
+    name: "Pattern 3"
+    id: pattern_3
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(2);'
+    set_action:
+      - lambda: |-
+          id(sync_out).set_pattern_text(2, x);
+          id(pattern_3).publish_state(id(sync_out).get_pattern_text(2));
+    update_interval: 60s
+  - platform: template
+    name: "Pattern 4"
+    id: pattern_4
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(3);'
+    set_action:
+      - lambda: |-
+          id(sync_out).set_pattern_text(3, x);
+          id(pattern_4).publish_state(id(sync_out).get_pattern_text(3));
+    update_interval: 60s
+  - platform: template
+    name: "Pattern 5"
+    id: pattern_5
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(4);'
+    set_action:
+      - lambda: |-
+          id(sync_out).set_pattern_text(4, x);
+          id(pattern_5).publish_state(id(sync_out).get_pattern_text(4));
+    update_interval: 60s
+  - platform: template
+    name: "Pattern 6"
+    id: pattern_6
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(5);'
+    set_action:
+      - lambda: |-
+          id(sync_out).set_pattern_text(5, x);
+          id(pattern_6).publish_state(id(sync_out).get_pattern_text(5));
+    update_interval: 60s
+  - platform: template
+    name: "Pattern 7"
+    id: pattern_7
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(6);'
+    set_action:
+      - lambda: |-
+          id(sync_out).set_pattern_text(6, x);
+          id(pattern_7).publish_state(id(sync_out).get_pattern_text(6));
+    update_interval: 60s
+  - platform: template
+    name: "Pattern 8"
+    id: pattern_8
+    mode: text
+    max_length: 255
+    lambda: 'return id(sync_out).get_pattern_text(7);'
+    set_action:
+      - lambda: |-
+          id(sync_out).set_pattern_text(7, x);
+          id(pattern_8).publish_state(id(sync_out).get_pattern_text(7));
+    update_interval: 60s
 
   # What the wall is drawn in, as #rrggbb. On the wire like everything else, so
   # one automation warms all 24 clocks at sunset instead of eight reflashes:
