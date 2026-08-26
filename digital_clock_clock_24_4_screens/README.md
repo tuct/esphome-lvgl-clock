@@ -223,8 +223,11 @@ line away:
 ## Time sync and choreographies
 
 Identical to the 24-screen build — the master broadcasts
-`CC24 <epoch> <ms> <mode> <demo_min>` once a second and on every mode change,
-and the slave sets its clock and mirrors the mode. The
+`CC24 <epoch> <ms> <mode> …` once a second and on every mode change, and the
+slave sets its clock and mirrors the mode. Every field after `<mode>` is
+optional, so the line has grown over time (temperature, pattern slot,
+movement, sweep length, choreography speed) without ever breaking a board
+running older firmware. The
 [protocol section there](../digital_clock_clock_24_24_round_screens/README.md#time-sync)
 covers it in full. Two things that matter when wiring this one up:
 

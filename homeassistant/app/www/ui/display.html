@@ -11,15 +11,20 @@
   /* Full bleed and nothing else. This page is meant to be the only thing on a
      tablet, so it has no chrome to hide: no header, no scrollbars, no theme. */
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-  body { display: grid; place-items: center; }
-  clockclock24-card { display: block; width: 100%; }
+  /* The host has to have REAL SIZE. The card's canvas is width:100%, and a
+     percentage of a shrink-to-fit parent is not the viewport. */
+  #host, clockclock24-card { display: block; width: 100vw; height: 100vh; }
   /* Controls fade out and stay out. A wall clock that shows a toolbar whenever
      you walk past it is not a wall clock. */
   #bar {
     position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 8px;
     justify-content: flex-end; padding: 10px 14px;
     font: 13px system-ui, sans-serif; opacity: 0; transition: opacity .3s;
-    background: linear-gradient(#000c, #0000); pointer-events: none;
+    /* Faded from the PAGE's colour, not from black. A hard black band across
+       the top of a display someone chose to make dark blue is the one thing
+       they would notice immediately. */
+    background: linear-gradient(var(--chrome-fade, #000000cc), transparent);
+    pointer-events: none;
   }
   body.awake #bar { opacity: 1; pointer-events: auto; }
   #bar button, #bar a {

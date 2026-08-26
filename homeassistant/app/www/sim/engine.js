@@ -642,11 +642,23 @@ const MODES = {
   test:        { fn: tickTest,   label: "test *",      pose: true  },
 };
 
+// The firmware's mode names are the WIRE FORMAT and do not all match these
+// keys: what it broadcasts as `flying_birds` is `birds` here. Anything reading
+// a mode name off a real wall - the Lovelace card, the tablet view - has to go
+// through this, or it hands Wall a key that does not exist.
+//
+// An alias table rather than extra MODES entries: the sandbox builds its mode
+// buttons from Object.keys(MODES), and an alias in there is a duplicate button.
+const MODE_ALIASES = { flying_birds: "birds" };
+const resolveMode = (name) =>
+  MODES[name] ? name : (MODE_ALIASES[name] || name);
+
 // Everything the page needs, in one namespace.
 window.CC = {
   NUM_DIGITS, CLOCKS_PER_DIGIT, NUM_CLOCKS, NUM_HANDS, WALL_COLS, WALL_ROWS,
   PARK, FONT, LOVE, TEMP_GLYPHS, TG_DEGREE, TG_C, TG_MINUS, TG_BLANK,
   wrap360, shortestDelta, ease, easeOut, wallPos, K, MODES,
+  MODE_ALIASES, resolveMode,
   tickRotate, tickBirds, tickWave, tickSpiral, tickWind, tickLove, tickTemp, tickTime,
   tickRotatingMaze, tickZipper, tickMirrorWave, tickTest, cellAt, mazePhase,
 };

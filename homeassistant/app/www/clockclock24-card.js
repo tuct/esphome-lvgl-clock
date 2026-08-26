@@ -647,11 +647,23 @@ const MODES = {
   test:        { fn: tickTest,   label: "test *",      pose: true  },
 };
 
+// The firmware's mode names are the WIRE FORMAT and do not all match these
+// keys: what it broadcasts as `flying_birds` is `birds` here. Anything reading
+// a mode name off a real wall - the Lovelace card, the tablet view - has to go
+// through this, or it hands Wall a key that does not exist.
+//
+// An alias table rather than extra MODES entries: the sandbox builds its mode
+// buttons from Object.keys(MODES), and an alias in there is a duplicate button.
+const MODE_ALIASES = { flying_birds: "birds" };
+const resolveMode = (name) =>
+  MODES[name] ? name : (MODE_ALIASES[name] || name);
+
 // Everything the page needs, in one namespace.
 window.CC = {
   NUM_DIGITS, CLOCKS_PER_DIGIT, NUM_CLOCKS, NUM_HANDS, WALL_COLS, WALL_ROWS,
   PARK, FONT, LOVE, TEMP_GLYPHS, TG_DEGREE, TG_C, TG_MINUS, TG_BLANK,
   wrap360, shortestDelta, ease, easeOut, wallPos, K, MODES,
+  MODE_ALIASES, resolveMode,
   tickRotate, tickBirds, tickWave, tickSpiral, tickWind, tickLove, tickTemp, tickTime,
   tickRotatingMaze, tickZipper, tickMirrorWave, tickTest, cellAt, mazePhase,
 };
@@ -668,7 +680,7 @@ window.CC = {
 (function () {
   const C = window.CC;
   const { NUM_HANDS, NUM_DIGITS, CLOCKS_PER_DIGIT, PARK, FONT,
-          wrap360, shortestDelta, ease, easeOut, wallPos, MODES } = C;
+          wrap360, shortestDelta, ease, easeOut, wallPos, MODES, resolveMode } = C;
 
   const BLEND_NONE = 0, BLEND_PENDING = 1, BLEND_ACTIVE = 2;
 
@@ -705,6 +717,15 @@ window.CC = {
     }
 
     setMode(m, nowMs) {
+      // A name off a real wall may be the firmware's rather than ours.
+      m = resolveMode(m);
+      // And an unknown one is REFUSED rather than stored. Storing it meant
+      // frame() looked up undefined and threw on every animation frame, which
+      // does not stop the loop - it just kills the wall and floods the console.
+      if (!MODES[m]) {
+        console.warn(`[clockclock24] unknown mode "${m}" - staying on "${this.mode}"`);
+        return;
+      }
       if (m === this.mode) return;
       if (m === "time") { this.settleToTime(nowMs); return; }
       // Remember where every hand is; blend_into_mode_() converts these to
@@ -850,7 +871,9 @@ window.CC = {
     frame(nowMs, dtS) {
       const settling = this.animating && this.settleFrom !== "time";
       const live = settling ? this.settleFrom : this.mode;
-      const spec = MODES[live];
+      // Belt and braces: setMode refuses unknown modes, so this can only fire
+      // if something set .mode directly. Showing the time beats throwing.
+      const spec = MODES[live] || MODES.time;
 
       // The choreography clock is HELD AT 0 until the entry blend finishes, so
       // the blend chases a STILL target. Without this every hand fades toward
@@ -1193,7 +1216,9 @@ window.CC = {
     background: "#000000",
     face_color: "#1f1f23",
     show_face: false,
-    digit_gap: 0.35,            // extra space between digits, in clock widths
+    // 0 = the real wall: 24 panels on one frame, evenly spaced. Raise it for a
+    // dashboard card if you want the HH:MM grouping to read at a glance.
+    digit_gap: 0,               // extra space between digits, in clock widths
     fullscreen: false,          // fill the viewport height instead of flowing
     pattern: null,              // "<name>:<base64>" from the sandbox
     time_entity: null,          // optional; default is the browser's clock
@@ -1236,7 +1261,12 @@ window.CC = {
       this.shadowRoot.innerHTML = `
         <style>
           :host { display: block; }
-          ha-card { overflow: hidden; }
+          /* display:block explicitly. Inside Lovelace ha-card is a defined
+             element and already block, but in the add-on's tablet view it is
+             UNDEFINED - and an unknown element defaults to display:inline, so
+             the canvas's width:100% resolves against a shrink-to-fit inline
+             box and the wall collapses to nothing. */
+          ha-card { display: block; overflow: hidden; }
           .wrap { background: ${cfg.background}; }
           canvas {
             display: block; width: 100%; height: auto;
@@ -1408,16 +1438,26 @@ window.CC = {
   const P = C.pattern;
 
   const MAX_RATE = P.MAX_RATE;
-  // Speed sliders are SQUARED: a linear 0..1 spends nine tenths of its travel
-  // above 9 deg/s, and the slow end is where a pattern reads.
-  const spdFromSlider = p => p * p;
-  const sliderFromSpd = v => Math.sqrt(Math.max(0, v));
+  // Speed sliders are SQUARED: a linear travel spends nine tenths of itself
+  // above 9 deg/s, and the slow end is where a pattern reads. The slider is in
+  // PERCENT with a 0.5 step, so the readout is a number you can dial back to
+  // rather than a position you have to find again by eye.
+  const ICON_PAUSE = '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">' +
+    '<rect x="2" y="1.5" width="3" height="9" fill="currentColor"/>' +
+    '<rect x="7" y="1.5" width="3" height="9" fill="currentColor"/></svg>';
+  const ICON_PLAY = '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">' +
+    '<path d="M3 1.5 L10.5 6 L3 10.5 Z" fill="currentColor"/></svg>';
+
+  const spdFromSlider = pct => { const p = pct / 100; return p * p; };
+  const sliderFromSpd = v => Math.sqrt(Math.max(0, v)) * 100;
 
   class ClockClock24EditorCard extends HTMLElement {
     setConfig(cfg) {
       this._cfg = Object.assign({ entity: null, snap: 15, name: "pattern" }, cfg || {});
       this._sel = new Set([0]);
       this._primary = 0;
+      this._scope = "all";       // what Copy carries: all | position | motion
+      this._clip = null;
       this._build();
     }
     set hass(h) { this._hass = h; if (this._entityRow) this._syncEntity(); }
@@ -1443,44 +1483,128 @@ window.CC = {
           button[aria-pressed="true"] { background:var(--primary-color,#03a9f4); color:#000; font-weight:600; }
           button:disabled { opacity:.4; cursor:not-allowed; }
           input[type=range] { flex:1 1 90px; min-width:80px; }
-          .val { min-width:5.5em; text-align:right; font-variant-numeric:tabular-nums; font-size:.85em; }
+          select { font:inherit; padding:3px 6px; border-radius:6px;
+                   border:1px solid var(--divider-color,#444);
+                   background:var(--secondary-background-color,#222);
+                   color:var(--primary-text-color,#eee); }
+          .row.rel { margin-top:2px; opacity:.9; }
+          .pm { opacity:.6; }
+          .val { min-width:9.5em; text-align:right; font-variant-numeric:tabular-nums; font-size:.85em; }
           .hint { margin:8px 0 0; font-size:.8em; opacity:.7; }
+          .hint.inline { margin:0; }
+          .sec { margin:16px 0 2px; font-size:.72em; letter-spacing:.09em;
+                 text-transform:uppercase; opacity:.55; font-weight:600;
+                 border-top:1px solid var(--divider-color,#333); padding-top:10px;
+                 display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+          .sec:first-of-type { border-top:0; margin-top:6px; padding-top:0; }
+          .secnote { text-transform:none; letter-spacing:0; font-weight:400; opacity:.8; }
+          button.icon { line-height:0; padding:6px 11px; }
+          button.icon svg { display:block; }
+          /* Hovering a clock says what it is set to - the canvas cannot carry
+             text, and reading a pattern off 24 pairs of hands is guesswork. */
+          .tip { position:absolute; pointer-events:none; z-index:5; display:none;
+                 background:#0e1013ee; color:#e7e9ee; border:1px solid #2a2f37;
+                 border-radius:6px; padding:6px 9px; font:11px/1.45 ui-monospace,monospace;
+                 white-space:pre; transform:translate(-50%,-115%); }
+          .cvwrap { position:relative; }
           textarea { width:100%; margin-top:8px; min-height:60px; font:11px/1.4 ui-monospace,monospace;
                      background:#0e1013; color:#8fd0a0; border:1px solid var(--divider-color,#444);
                      border-radius:6px; padding:6px; }
         </style>
         <ha-card>
-          <canvas></canvas>
+          <div class="cvwrap"><canvas></canvas><div class="tip" id="tip"></div></div>
           <div class="pad">
             <p class="hint" id="who"></p>
 
+            <div class="sec">Selection</div>
+            <div class="row">
+              <span class="lbl">select</span>
+              <button id="selall">All 24</button>
+              <button id="selrow">Row</button>
+              <button id="selcol">Column</button>
+              <button id="selnone">Just one</button>
+              <span class="hint inline">or shift-click the wall</span>
+            </div>
+
             <div class="row"><span class="lbl">hand A</span>
-              <button class="dir" data-h="0" data-v="-1" title="counter-clockwise">←</button>
-              <button class="dir" data-h="0" data-v="0">—</button>
-              <button class="dir" data-h="0" data-v="1" title="clockwise">→</button>
-              <input type="range" id="spd0" min="0" max="1" step="0.005">
+              <button class="dir" data-h="0" data-v="-1" title="counter-clockwise">&#8634;</button>
+              <button class="dir" data-h="0" data-v="0" title="still">&#9679;</button>
+              <button class="dir" data-h="0" data-v="1" title="clockwise">&#8635;</button>
+              <select id="mode0" title="Fixed rate, or take a neighbour's and add to it">
+                <option value="fixed">fixed</option>
+                <option value="rel">same as…</option>
+              </select>
+              <input type="range" id="spd0" min="0" max="100" step="0.5">
               <span class="val" id="spd0v"></span>
             </div>
+            <div class="row rel" id="rel0" style="display:none">
+              <span class="lbl"></span>
+              <select id="from0">
+                <option value="left">the clock to its left</option>
+                <option value="right">to its right</option>
+                <option value="up">above it</option>
+                <option value="down">below it</option>
+              </select>
+              <span class="pm">±</span>
+              <input type="range" id="d0" min="-50" max="50" step="0.5">
+              <span class="val" id="d0v"></span>
+            </div>
             <div class="row"><span class="lbl">hand B</span>
-              <button class="dir" data-h="1" data-v="-1" title="counter-clockwise">←</button>
-              <button class="dir" data-h="1" data-v="0">—</button>
-              <button class="dir" data-h="1" data-v="1" title="clockwise">→</button>
-              <input type="range" id="spd1" min="0" max="1" step="0.005">
+              <button class="dir" data-h="1" data-v="-1" title="counter-clockwise">&#8634;</button>
+              <button class="dir" data-h="1" data-v="0" title="still">&#9679;</button>
+              <button class="dir" data-h="1" data-v="1" title="clockwise">&#8635;</button>
+              <select id="mode1" title="Fixed rate, or take a neighbour's and add to it">
+                <option value="fixed">fixed</option>
+                <option value="rel">same as…</option>
+              </select>
+              <input type="range" id="spd1" min="0" max="100" step="0.5">
               <span class="val" id="spd1v"></span>
+            </div>
+            <div class="row rel" id="rel1" style="display:none">
+              <span class="lbl"></span>
+              <select id="from1">
+                <option value="left">the clock to its left</option>
+                <option value="right">to its right</option>
+                <option value="up">above it</option>
+                <option value="down">below it</option>
+              </select>
+              <span class="pm">±</span>
+              <input type="range" id="d1" min="-50" max="50" step="0.5">
+              <span class="val" id="d1v"></span>
             </div>
 
             <div class="row">
-              <button id="play" aria-pressed="true">Pause</button>
-              <button id="home" title="Every hand back on the pose you configured">Back to pose</button>
-              <button id="all">Copy to all 24</button>
-              <button id="row">to row</button>
-              <button id="col">to column</button>
+              <span class="lbl">pose</span>
+              <button id="home" title="Every selected hand back on the pose you configured">Back to pose</button>
+              <button id="seed" title="Freeze where the hands are NOW as the pose">Wall to pose</button>
+            </div>
+
+          <div class="sec">Copy<span class="secnote">from the primary clock to every selected one</span></div>
+            <div class="row">
+              <span class="lbl">what</span>
+              <button class="scope" data-s="all" aria-pressed="true">Everything</button>
+              <button class="scope" data-s="position">Position only</button>
+              <button class="scope" data-s="motion">Motion only</button>
+            </div>
+            <div class="row">
+              <span class="lbl">to</span>
+              <button id="copyc" title="Remember the primary clock">Copy</button>
+              <button id="pastec" title="Paste into every selected clock">Paste into selection</button>
+              <button id="all">All 24</button>
+              <button id="row">Its row</button>
+              <button id="col">Its column</button>
+            </div>
+
+          <div class="sec">The pattern<span class="secnote">whole wall &mdash; not just the selection</span></div>
+            <div class="row">
+              <button id="play" class="icon" aria-pressed="true" title="Pause the motion"></button>
+              <span class="hint inline" id="playnote">running</span>
             </div>
 
             <div class="row" id="entityRow">
-              <button id="load">Load from wall</button>
-              <button id="send">Send to wall</button>
-              <button id="copy">Copy string</button>
+              <button id="load" title="Read the pattern out of the entity">Load from wall</button>
+              <button id="send" title="Write it back - the whole wall has it a second later">Send to wall</button>
+              <button id="copy" title="The pattern as one line of text">Copy string</button>
             </div>
             <p class="hint" id="note"></p>
             <textarea id="out" spellcheck="false" style="display:none"></textarea>
@@ -1504,19 +1628,82 @@ window.CC = {
           P.get(i)[b.dataset.h === "0" ? "dirA" : "dirB"] = +b.dataset.v;
         }));
       });
+      // Speed is either a rate or a RELATIONSHIP: "whatever my neighbour is
+      // doing, plus a bit". That is what makes a gradient across the wall one
+      // number instead of eight, and it is the thing the sandbox had and this
+      // card did not - so a pattern drawn there could not be edited here
+      // without silently flattening it to fixed rates.
+      const key = h => (h === 0 ? "spdA" : "spdB");
+      const writeSpeed = (h) => {
+        const rel = this.$("mode" + h).value === "rel";
+        const spec = rel
+          ? { mode: "rel", from: this.$("from" + h).value,
+              d: (+this.$("d" + h).value) / 100 }
+          : { mode: "fixed", v: spdFromSlider(+this.$("spd" + h).value) };
+        this._rebase(() => this._each(i => { P.get(i)[key(h)] = JSON.parse(JSON.stringify(spec)); }));
+      };
       [0, 1].forEach(h => {
-        $("spd" + h).oninput = e => this._rebase(() => this._each(i => {
-          P.get(i)[h === 0 ? "spdA" : "spdB"] = { mode: "fixed", v: spdFromSlider(+e.target.value) };
-        }));
+        $("spd" + h).oninput = () => writeSpeed(h);
+        $("d" + h).oninput = () => writeSpeed(h);
+        $("mode" + h).onchange = () => writeSpeed(h);
+        $("from" + h).onchange = () => writeSpeed(h);
       });
 
+      $("play").innerHTML = ICON_PAUSE;
       $("play").onclick = () => {
         this._running = !this._running;
-        $("play").textContent = this._running ? "Pause" : "Play";
+        // U+23F8 pause, U+25B6 play. An icon, because the button's job is
+        // obvious and the word was the widest thing in the row.
+        $("play").innerHTML = this._running ? ICON_PAUSE : ICON_PLAY;
+        $("play").title = this._running ? "Pause the motion" : "Run the motion";
         $("play").setAttribute("aria-pressed", String(this._running));
+        $("playnote").textContent = this._running ? "running" : "paused";
         this._rebase(() => {});   // resume from where the hands are
       };
-      $("home").onclick = () => { P.toHome(this._t); this._sync(); };
+      // Back to pose / Wall to pose are inverses, and both act on the
+      // SELECTION: applying either to all 24 when one clock is selected is how
+      // you lose an afternoon's work to a mis-click.
+      $("home").onclick = () => {
+        this._each(i => { P.anchorAt(i, 0, P.get(i).h0, this._t);
+                          P.anchorAt(i, 1, P.get(i).h1, this._t); });
+        this._sync();
+        this._note(`Back to pose — ${this._sel.size} clock${this._sel.size > 1 ? "s" : ""}.`);
+      };
+      $("seed").onclick = () => {
+        this._each(i => { P.setHomeAt(i, 0, this._angle(i, 0), this._t);
+                          P.setHomeAt(i, 1, this._angle(i, 1), this._t); });
+        this._sync();
+        this._note(`Pose taken from where the hands are — ${this._sel.size} clock${
+          this._sel.size > 1 ? "s" : ""}.`);
+      };
+
+      // ---- selection helpers. Shift-click works, but nothing on the canvas
+      // says so, and "select the whole row" is the commonest thing you want.
+      $("selall").onclick = () => this._select(() => true, "all 24");
+      $("selrow").onclick = () => { const r = C.wallPos(this._primary).row;
+        this._select(i => C.wallPos(i).row === r, "row " + r); };
+      $("selcol").onclick = () => { const c = C.wallPos(this._primary).col;
+        this._select(i => C.wallPos(i).col === c, "column " + c); };
+      $("selnone").onclick = () => this._select(i => i === this._primary, "one clock");
+
+      // ---- copy scope
+      this.shadowRoot.querySelectorAll("button.scope").forEach(b => {
+        b.onclick = () => {
+          this._scope = b.dataset.s;
+          this.shadowRoot.querySelectorAll("button.scope").forEach(o =>
+            o.setAttribute("aria-pressed", String(o === b)));
+          this._note(`Copy will carry ${b.textContent.toLowerCase()}.`);
+        };
+      });
+      $("copyc").onclick = () => {
+        this._clip = P.copy(this._primary);
+        this._clipFrom = this._primary;
+        this._note(`Copied clock ${this._primary}. Select targets, then Paste.`);
+      };
+      $("pastec").onclick = () => {
+        if (!this._clip) { this._note("Nothing copied yet."); return; }
+        this._spread(i => this._sel.has(i), this._clip);
+      };
       $("all").onclick = () => this._spread(() => true);
       $("row").onclick = () => { const r = C.wallPos(this._primary).row;
                                  this._spread(i => C.wallPos(i).row === r); };
@@ -1536,6 +1723,11 @@ window.CC = {
       this._cv.addEventListener("pointermove", e => { if (this._drag) this._move(e); });
       this._cv.addEventListener("pointerup", () => { this._drag = null; });
       this._cv.addEventListener("pointercancel", () => { this._drag = null; });
+      // Hover says what a clock is SET to. 24 pairs of hands all turning at
+      // slightly different rates is not something you can read off the canvas,
+      // and the controls only ever show the primary.
+      this._cv.addEventListener("pointermove", e => this._hover(e));
+      this._cv.addEventListener("pointerleave", () => { this.$("tip").style.display = "none"; });
 
       this._sync();
     }
@@ -1562,11 +1754,51 @@ window.CC = {
       this._sync();
     }
 
-    _spread(pred) {
-      const src = P.copy(this._primary);
-      for (let i = 0; i < C.NUM_CLOCKS; i++) if (pred(i)) P.paste(i, src);
+    // Copy from `src` (or the primary) into everything `pred` matches.
+    //
+    // The SCOPE is the point: "make this whole row turn like this one but keep
+    // where each hand is" is a normal thing to want, and pasting everything is
+    // the one operation that cannot express it.
+    _spread(pred, src) {
+      const from = src || P.copy(this._primary);
+      let n = 0;
+      this._rebase(() => {
+        for (let i = 0; i < C.NUM_CLOCKS; i++) {
+          if (!pred(i) || i === this._clipFrom && src) continue;
+          const cur = P.get(i);
+          if (this._scope === "position") {
+            cur.h0 = from.h0; cur.h1 = from.h1;
+          } else if (this._scope === "motion") {
+            cur.dirA = from.dirA; cur.dirB = from.dirB;
+            cur.spdA = JSON.parse(JSON.stringify(from.spdA));
+            cur.spdB = JSON.parse(JSON.stringify(from.spdB));
+          } else {
+            P.paste(i, from);
+          }
+          n++;
+        }
+      });
+      // Position is a POSE change, so the hands have to go there - rebase
+      // would otherwise hold them where they were and only move the anchor.
+      if (this._scope !== "motion") {
+        for (let i = 0; i < C.NUM_CLOCKS; i++) {
+          if (!pred(i)) continue;
+          P.anchorAt(i, 0, P.get(i).h0, this._t);
+          P.anchorAt(i, 1, P.get(i).h1, this._t);
+        }
+      }
       this._sync();
-      this._note("Copied — pose and motion.");
+      const what = this._scope === "all" ? "pose and motion"
+                 : this._scope === "position" ? "position" : "motion";
+      this._note(`Copied ${what} to ${n} clock${n === 1 ? "" : "s"}.`);
+    }
+
+    _select(pred, label) {
+      this._sel = new Set();
+      for (let i = 0; i < C.NUM_CLOCKS; i++) if (pred(i)) this._sel.add(i);
+      if (!this._sel.has(this._primary)) this._primary = this._sel.values().next().value;
+      this._sync();
+      this._note(`Selected ${label} — edits apply to ${this._sel.size}.`);
     }
 
     // ---- entity ------------------------------------------------------------
@@ -1598,7 +1830,12 @@ window.CC = {
     // ---- selection and posing ---------------------------------------------
     _layout() {
       const cv = this._cv, w = cv.width, h = cv.height;
-      const gap = 0.35;
+      // NO digit gap. The wall is 24 separate 240x240 panels on one frame, so
+      // its pitch is even by construction - the same distance right and down
+      // between every pair of faces. A gap here drew a wall that does not
+      // exist, and squeezed the cells besides: 8 + 0.35*3 columns of layout
+      // inside a canvas whose aspect-ratio is 8/3.
+      const gap = 0;
       const cell = Math.min(w / (C.WALL_COLS + gap * 3), h / C.WALL_ROWS);
       return { cell, gap: cell * gap, r: cell * 0.46,
                x0: (w - (cell * C.WALL_COLS + cell * gap * 3)) / 2 + cell / 2,
@@ -1650,6 +1887,31 @@ window.CC = {
       this._each(i => P.setHomeAt(i, this._drag.hand, a, this._t));
       this._sync();
     }
+    _hover(e) {
+      const tip = this.$("tip");
+      if (this._drag) { tip.style.display = "none"; return; }
+      const L = this._layout(), pt = this._at(e), i = this._pick(pt, L);
+      if (i < 0) { tip.style.display = "none"; return; }
+      const s = P.get(i), r = P.resolved()[i], { col, row } = C.wallPos(i);
+      const arrow = d => (d < 0 ? "\u21ba ccw" : d > 0 ? "\u21bb cw" : "\u25cf still");
+      const line = (label, ang, dir, v, sp) =>
+        `${label}  ${String(Math.round(ang)).padStart(3)}\u00b0  ${arrow(dir).padEnd(9)}` +
+        (dir ? `${(v * MAX_RATE).toFixed(1)}\u00b0/s` : "") +
+        (sp.mode === "rel"
+          ? `  (${sp.from}${sp.d >= 0 ? "+" : ""}${(sp.d * 100).toFixed(1)}%)` : "");
+      tip.textContent =
+        `clock ${i} \u00b7 col ${col} row ${row}${this._sel.has(i) ? "  (selected)" : ""}\n` +
+        line("A", s.h0, s.dirA, r[0], s.spdA) + "\n" +
+        line("B", s.h1, s.dirB, r[1], s.spdB);
+      // Positioned over the clock, in CSS pixels - the canvas backing store is
+      // scaled for retina, so its own coordinates are the wrong unit here.
+      const box = this._cv.getBoundingClientRect();
+      const c = this._centre(i, L), k = box.width / this._cv.width;
+      tip.style.left = (c.x * k) + "px";
+      tip.style.top = (c.y * k - L.r * k) + "px";
+      tip.style.display = "block";
+    }
+
     _angle(i, hand) {
       const s = P.get(i);
       return C.wrap360((hand ? s.a1 : s.a0) + P.offsetAt(i, hand, this._t));
@@ -1668,9 +1930,24 @@ window.CC = {
         b.setAttribute("aria-pressed", String(+b.dataset.v === cur));
       });
       [0, 1].forEach(h => {
-        const v = r[h];
+        const v = r[h];                          // the RESOLVED rate
+        const sp = h === 0 ? s.spdA : s.spdB;
+        const rel = sp.mode === "rel";
+        this.$("mode" + h).value = rel ? "rel" : "fixed";
+        this.$("rel" + h).style.display = rel ? "flex" : "none";
+        // The slider shows the resolved rate either way, so a relative hand
+        // still tells you what it is actually doing - it is just not what you
+        // drag to change it.
         this.$("spd" + h).value = sliderFromSpd(v);
-        this.$("spd" + h + "v").textContent = (v * MAX_RATE).toFixed(1) + "°/s";
+        this.$("spd" + h).disabled = rel;
+        if (rel) {
+          this.$("from" + h).value = sp.from;
+          this.$("d" + h).value = Math.round(sp.d * 100 * 2) / 2;
+          this.$("d" + h + "v").textContent =
+            `${sp.d >= 0 ? "+" : ""}${(sp.d * 100).toFixed(1)}%`;
+        }
+        this.$("spd" + h + "v").textContent =
+          `${sliderFromSpd(v).toFixed(1)}% · ${(v * MAX_RATE).toFixed(1)}°/s`;
       });
       this._syncEntity();
     }

@@ -207,6 +207,51 @@ text:
           id(pattern_2).publish_state(id(sync_out).get_pattern_text(1));
     update_interval: 60s
 
+  # What the wall is drawn in, as #rrggbb. On the wire like everything else, so
+  # one automation warms all 24 clocks at sunset instead of eight reflashes:
+  #
+  #   - service: text.set_value
+  #     target: {entity_id: text.cc24_board_d_hand_colour}
+  #     data: {value: "#ff8c3c"}
+  #
+  # Rejected rather than guessed at if it is not a colour - a hand colour that
+  # silently becomes black is a wall that has stopped working.
+  - platform: template
+    name: "Hand colour"
+    id: hand_colour_text
+    mode: text
+    max_length: 7
+    lambda: 'return lvgl_clock::LvglClock::rgb_to_string(id(dc_a).get_foreground_rgb());'
+    set_action:
+      - lambda: |-
+          uint32_t v;
+          if (lvgl_clock::LvglClock::rgb_from_string(x, v)) {
+            id(dc_a).set_foreground_rgb(v);
+          } else {
+            ESP_LOGW("cc24", "Hand colour '%s' is not #rrggbb - ignored", x.c_str());
+          }
+          id(hand_colour_text).publish_state(
+              lvgl_clock::LvglClock::rgb_to_string(id(dc_a).get_foreground_rgb()));
+    update_interval: 30s
+
+  - platform: template
+    name: "Background colour"
+    id: bg_colour_text
+    mode: text
+    max_length: 7
+    lambda: 'return lvgl_clock::LvglClock::rgb_to_string(id(dc_a).get_background_rgb());'
+    set_action:
+      - lambda: |-
+          uint32_t v;
+          if (lvgl_clock::LvglClock::rgb_from_string(x, v)) {
+            id(dc_a).set_background_rgb(v);
+          } else {
+            ESP_LOGW("cc24", "Background '%s' is not #rrggbb - ignored", x.c_str());
+          }
+          id(bg_colour_text).publish_state(
+              lvgl_clock::LvglClock::rgb_to_string(id(dc_a).get_background_rgb()));
+    update_interval: 30s
+
   # The choreography rotation, in order. Repeats are meaningful: listing `temp`
   # every other entry gives it half the slots. Unknown names are dropped with a
   # warning and the field republishes what was accepted, so a typo shows up
@@ -301,6 +346,63 @@ select:
           uint32_t secs = (x == "off") ? 0 : (uint32_t) atoi(x.c_str()) * 60;
           id(dc_a).set_cycle_interval(secs);
           id(cycle_interval_select).publish_state(x);
+    update_interval: 30s
+
+  # How the two hands travel to a new digit. Cosmetic, but it changes the
+  # character of every sweep on the wall - `opposite` is the ClockClock look,
+  # the hands arriving from either side; `long` takes the scenic route.
+  #
+  # Set here, broadcast to all seven listeners. It has to be the whole wall or
+  # none of it: two boards routing differently is visible in a single digit.
+  - platform: template
+    name: "Movement"
+    id: movement_select
+    options: ["opposite", "clockwise", "counter", "long"]
+    lambda: 'return id(dc_a).get_movement_name();'
+    set_action:
+      - lambda: |-
+          id(dc_a).set_movement_by_name(x);
+          id(movement_select).publish_state(id(dc_a).get_movement_name());
+    update_interval: 30s
+
+number:
+  # How long a digit sweep takes. The 35 s choreography window is fixed; this
+  # is the time the hands spend travelling to a new minute, and the time a mode
+  # takes to fade in.
+  - platform: template
+    name: "Transition length"
+    id: transition_number
+    unit_of_measurement: "s"
+    min_value: 0.5
+    max_value: 20
+    step: 0.5
+    mode: slider
+    lambda: 'return id(dc_a).get_transition_length() / 1000.0f;'
+    set_action:
+      - lambda: |-
+          id(dc_a).set_transition_length((uint32_t) lroundf(x * 1000.0f));
+          id(transition_number).publish_state(id(dc_a).get_transition_length() / 1000.0f);
+    update_interval: 30s
+
+  # Choreography speed, x1.0 = the base rates.
+  #
+  # A choreography is evaluated at `t * mode_speed`, so changing this moves
+  # where the animation IS, not only how fast it runs. The component blends
+  # into the new position rather than snapping - the same thing entering a mode
+  # does - and every board applies the same number from the same packet, so the
+  # wall eases across together instead of falling out of phase.
+  - platform: template
+    name: "Mode speed"
+    id: mode_speed_number
+    min_value: 0.1
+    max_value: 5
+    step: 0.1
+    mode: slider
+    lambda: 'return id(dc_a).get_mode_speed();'
+    set_action:
+      - lambda: |-
+          id(dc_a).set_mode_speed(x);
+          id(mode_speed_number).publish_state(id(dc_a).get_mode_speed());
     update_interval: 30s
 
 button:

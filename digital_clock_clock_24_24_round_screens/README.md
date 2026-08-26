@@ -411,10 +411,21 @@ file included with different vars. Colours live in
 [`common_base_esp32_s3_xiao.yaml`](./common_base_esp32_s3_xiao.yaml), and the
 timezone in the role files. Nothing here needs editing a board file.
 
-> Change a setting, reflash all eight. Anything that affects timing —
-> `mode_speed`, `transition_length`, `cycle_modes` — **must be identical on
-> every board**, because each one runs the choreography from its own clock. Two
-> boards on different values drift out of phase rather than merely out of step.
+> **Most of it you no longer reflash for.** The mode, the cycle list and its
+> interval, the eight pattern slots, and now `movement`, `transition_length`
+> and `mode_speed` are all set on the **master** at runtime and broadcast down
+> the bus. The values below are the compile-time defaults — where the wall
+> starts, not where it is stuck. See
+> [From Home Assistant](#from-home-assistant) below.
+>
+> They are broadcast rather than set per board for a reason: anything that
+> affects timing **must be identical everywhere**, because each board runs the
+> choreography from its own clock. Two boards on different values drift out of
+> phase rather than merely out of step. Sending them from one place is what
+> makes that impossible to get wrong.
+>
+> Genuinely compile-time — reflash all eight to change these: colours,
+> `hand_width`, `startup_align`, `sync_dot`, `show_face`, and the pin map.
 
 ### Which choreographies play, and when
 
@@ -473,12 +484,58 @@ clockclock24:
 - **`mode_speed:`** scales the idle animations only. The base rates are already
   unhurried — a `wave` revolution takes 15.3 s — so this is rarely worth
   touching.
+- **`movement`, `transition_length` and `mode_speed` are also Home Assistant
+  entities on the master**, and what you set here is only the starting value.
+  Changing the speed live is the interesting one: a choreography is evaluated
+  at `t × mode_speed`, so a new multiplier moves *where the animation is*, not
+  just how fast it runs from there. The wall blends into the new position
+  rather than snapping — the same thing it does entering a mode — and every
+  board applies the same number from the same packet, so it eases across
+  together instead of falling out of phase.
 - **`show_face: true`** draws a filled disc behind each pair of hands in
   `cc_faces`. It is off because a filled 240 px disc is the most expensive
   thing in the frame, and invisible in white-on-black anyway.
 - **`sync_dot:`** is a diagnostic, not decoration: a healthy wall shows
   nothing. Leave it on — see
   [The sync dot](#the-sync-dot--reading-the-wall-without-a-laptop).
+
+### From Home Assistant
+
+The master is the only board with a network, and everything the wall does at
+runtime is one of its entities:
+
+| Entity | |
+|---|---|
+| `select.…_mode` | What the wall is doing. An **override** — with a cycle interval set, the next window takes it back. Set the interval to `off` to make a choice stick |
+| `select.…_pattern` | Which slot `pattern` draws |
+| `select.…_cycle_interval` | How often a window opens, or `off` |
+| `select.…_movement` | `opposite` / `clockwise` / `counter` / `long` |
+| `number.…_transition_length` | Sweep time, in seconds |
+| `number.…_mode_speed` | Choreography rate, ×1 is the base |
+| `text.…_hand_colour` | `#rrggbb`. Anything that is not a colour is refused and logged, not guessed at |
+| `text.…_background_colour` | `#rrggbb` |
+| `text.…_cycle_modes` | The rotation, in order — repeats count |
+| `text.…_pattern_1` … | The pattern slots, read **and** write |
+| `button.…_reload_patterns_from_firmware` | Back to the `patterns/` folder as compiled in |
+
+All of it reaches the other seven boards over the bus. Nothing is recompiled
+and nothing is reflashed.
+
+`board_d.yaml` also declares a project marker, which is how anything looking
+for the wall finds it rather than guessing at entity names:
+
+```yaml
+esphome:
+  name: cc24-board-d
+  project:
+    name: "tuct.digitalclockclock24"      # manufacturer / model in HA
+    version: "1.1"
+```
+
+**[The add-on](../homeassistant/README.md)** puts all of this on one page —
+with a live preview of what the wall is showing, the pattern editor, and
+full-screen views for tablets. Add this repository under **Settings → Add-ons →
+Repositories**.
 
 ### Motion patterns — design them in the browser
 
@@ -572,6 +629,22 @@ color:
 `panel.yaml` references them as `foreground: cc_hands` / `background: cc_bg`.
 White on black is the original's look and the cheapest to draw, but nothing
 stops you making the hands amber.
+
+**These are only the starting values.** Both are Home Assistant entities on the
+master and both go on the wire, so one automation changes all 24 clocks:
+
+```yaml
+automation:
+  - alias: Warm the wall after sunset
+    trigger: { platform: sun, event: sunset }
+    action:
+      - service: text.set_value
+        target: { entity_id: text.cc24_board_d_hand_colour }
+        data:   { value: "#ff8c3c" }
+```
+
+`cc_faces` is still compile-time — it is only drawn when `show_face: true`,
+which is off.
 
 ### Timezone and temperature
 
@@ -792,7 +865,7 @@ e.g. `137` changes all four digits every tick.
 The master broadcasts a line on the bus (default every second):
 
 ```
-CC24 <epoch> <ms> <mode> <demo_min>\n
+CC24 <epoch> <ms> <mode> <demo_min> <temp> <slot> <movement> <transition_ms> <speed_x100> <hand_rgb> <bg_rgb>\n
 ```
 
 `<ms>` is the part that matters. Nodes only need to agree on which *minute* it
@@ -805,6 +878,21 @@ precision instead and flips land within transport jitter. `<mode>` carries
 one, and `<demo_min>` carries the master's fake-minute counter in demo mode
 (-1 otherwise) — without it each board would count its own and the wall would
 show 8 different times.
+
+Every field after `<mode>` is **optional on the way in**: the parser fills a
+default for anything the line does not carry, and ignores anything it does not
+recognise. That is what makes a mixed-firmware wall survive — an older listener
+reads a newer master's line and simply stops at the last field it knows. It is
+also why the format only ever **grows**: fields are appended, never reordered
+or repurposed, and the mode and movement enums are append-only for the same
+reason.
+
+The last five carry how the wall *moves* and what it is *drawn in* — the routing rule for a sweep, how
+long a sweep takes, and the choreography speed multiplier. They are set on the
+master (as Home Assistant entities) and broadcast, because they have to be the
+same everywhere: `mode_speed` scales the time base, so two boards on different
+values do not merely look different, they drift apart.
+
 
 #### Only the master runs the boot-phase animation
 

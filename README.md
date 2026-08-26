@@ -103,6 +103,10 @@ eight. Export it, paste it into a text field in Home Assistant, and the master
 pushes it down the bus: **the whole wall has it in a second, with nothing
 reflashed.**
 
+The same editor is in the [Home Assistant add-on](./homeassistant/README.md)
+and available as a Lovelace card, wired straight to a pattern slot — so
+**Send** replaces the copy and paste entirely.
+
 Or write a choreography in JavaScript, watch it, and transcribe it into the
 firmware — the sandbox is a line-for-line port, so the translation is syntax
 only.
@@ -124,16 +128,27 @@ clock styles, if you just want a clock on a panel:
 → [**Component reference**](./components/lvgl_clock/README.md) ·
 [**`examples/`**](./examples) — ready-to-flash single-board configs
 
-## No hardware? Put it on a dashboard
+## In Home Assistant
 
-[**The Home Assistant cards**](./homeassistant/) render the
-whole wall in Lovelace, running the same engine — same choreographies, same
-sweeps, same pattern format. One is a clock for a wall tablet; the other is the
-**pattern editor**, wired to the wall: draw a pattern, watch it run, press
-**Send**, and 24 real clocks are running it a second later.
+There is a **[Home Assistant add-on](./homeassistant/README.md)**. Add this
+repository under **Settings → Add-ons → ⋮ → Repositories** and it appears in
+the store; install it and it is a sidebar item.
 
-There is also an **[add-on](./homeassistant/)**. Add this repository under
-Settings → Add-ons → Repositories and the pattern editor becomes a sidebar
-item, with the Pattern slots on your master in a dropdown: draw, **Send**,
-done. A pattern is data rather than firmware, so nothing is compiled and
-nothing is reflashed.
+**With a wall**, it is the control panel: a live preview of what the wall is
+showing, the mode, the pattern slot, the cycle list and its interval, the
+movement, the sweep length, the choreography speed and the colours — all set
+on the master and broadcast to the other seven boards, so an automation can
+warm the whole wall at sunset. It finds your master by itself, from
+a project marker the firmware carries, rather than guessing at entity names.
+
+**Without one**, it is still a ClockClock 24: the **clock card** puts the whole
+wall in a dashboard, and a **display** is a full-screen page with its own link
+and its own colours — point a tablet at it and leave it there. Same engine as
+the firmware, so it is not an impression of the wall, it is the wall's own code
+with a canvas instead of panels.
+
+And the **pattern editor** is there too, wired to the wall: draw a pattern,
+watch it run, press **Send**, and 24 real clocks are running it a second later.
+
+→ [**Add-on and cards**](./homeassistant/README.md) ·
+[**Full documentation**](./homeassistant/DOCS.md)

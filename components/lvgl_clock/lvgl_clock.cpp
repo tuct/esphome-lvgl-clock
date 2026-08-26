@@ -1394,6 +1394,33 @@ void LvglClock::set_mode(ClockMode m) {
   this->apply_mode_(m);
 }
 
+void LvglClock::set_mode_speed(float s) {
+  // Out-of-range values come off the wire from a master that may be newer than
+  // this board, so clamp rather than trust.
+  if (!(s > 0.0f))
+    return;
+  if (s < 0.1f)
+    s = 0.1f;
+  else if (s > 5.0f)
+    s = 5.0f;
+  if (fabsf(s - this->mode_speed_) < 1e-4f)
+    return;
+  this->mode_speed_ = s;
+
+  // A choreography is evaluated at `choreo_t * mode_speed_`, so changing the
+  // multiplier does not just change the rate - it teleports the animation to
+  // wherever that product now lands. Blending into the new position is exactly
+  // what entering a mode does, and it is deterministic: every board on the
+  // wall applies the same number from the same packet and eases in together,
+  // so the phase lock survives a speed change instead of being broken by it.
+  if (is_idle_animation_(this->mode_) && this->blend_state_ == BLEND_NONE) {
+    for (int i = 0; i < NUM_HANDS; i++)
+      this->blend_off_[i] = this->cur_[i];
+    this->blend_state_ = BLEND_PENDING;
+  }
+  this->cc_dirty_ = true;
+}
+
 void LvglClock::apply_mode_(ClockMode m) {
   if (m == this->mode_)
     return;

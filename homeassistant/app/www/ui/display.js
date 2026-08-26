@@ -5,6 +5,7 @@
 // keeps it in step with the real wall.
 //
 // Query string, all optional:
+//   ?d=<id>          a display saved in the add-on: its look and its board
 //   ?mirror=1        follow the real wall's mode and pattern slot
 //   ?board=<id>      which board to follow (default: the first master found)
 //   ?mode=wave       a fixed mode instead of the rotation
@@ -16,8 +17,9 @@
   const q = new URLSearchParams(location.search);
   const host = document.getElementById("host");
   const note = document.getElementById("note");
-  const mirror = q.get("mirror") === "1";
 
+  // Base config from the query string. A saved display (?d=<id>) overrides it,
+  // so a hand-written link still works and a configured one does not need one.
   const cfg = {
     type: "custom:clockclock24-card",
     fullscreen: true,
@@ -26,6 +28,36 @@
     cycle_interval: Number(q.get("interval") || 120),
   };
   if (q.get("cycle")) cfg.cycle = q.get("cycle").split(",").map(s => s.trim()).filter(Boolean);
+
+  let mirror = q.get("mirror") === "1";
+  let boardId = q.get("board") || null;
+  let title = "";
+
+  async function loadSaved(id) {
+    const r = await fetch("api/displays").then(x => x.json());
+    const d = (r.displays || []).find(x => x.id === id);
+    if (!d) throw new Error("that display has been removed");
+    title = d.name;
+    document.title = d.name + " — Clock Clock 24";
+    mirror = !!d.mirror;
+    boardId = d.board || null;
+    cfg.mode = d.mode || "cycle";
+    cfg.cycle_interval = d.cycle_interval;
+    cfg.digit_gap = d.digit_gap;
+    cfg.hand_color = d.hand_color;
+    cfg.background = d.background;
+    cfg.face_color = d.face_color;
+    cfg.show_face = d.show_face;
+    if (d.cycle) cfg.cycle = d.cycle.split(",").map(s => s.trim()).filter(Boolean);
+    // The page behind the card has to match, or a non-black display shows a
+    // black border wherever the 8:3 wall does not reach the screen edge.
+    document.documentElement.style.background = d.background;
+    document.body.style.background = d.background;
+    // #rrggbb + alpha. Only for a 6-digit hex - #abc + "cc" is not a colour,
+    // and the default black fade is a fine fallback.
+    if (/^#[0-9a-fA-F]{6}$/.test(d.background))
+      document.documentElement.style.setProperty("--chrome-fade", d.background + "cc");
+  }
 
   let card = null;
   let shown = "";               // what the card is currently configured to show
@@ -49,15 +81,15 @@
     try {
       const r = await fetch("api/discover").then(x => x.json());
       const boards = r.devices || [];
-      const b = q.get("board")
-        ? boards.find(d => d.device_id === q.get("board"))
+      const b = boardId
+        ? boards.find(d => d.device_id === boardId)
         : boards.find(d => d.is_master) || boards[0];
       if (!b) { note.textContent = "No wall found — running on its own."; return; }
 
       const mode = b.controls.mode && b.controls.mode.state;
       const slotNo = b.controls.pattern_slot && Number(b.controls.pattern_slot.state);
       const slot = slotNo ? b.slots[slotNo - 1] : null;
-      note.textContent = `${b.device} · ${mode || "?"}`;
+      note.textContent = (title ? title + " · " : "") + `${b.device} · ${mode || "?"}`;
 
       if (!mode) return;
       if (mode === "pattern" && slot && slot.state)
@@ -69,13 +101,19 @@
     }
   }
 
-  mount();
-  if (mirror) {
-    follow();
-    setInterval(() => { if (!document.hidden) follow(); }, 3000);
-  } else {
-    note.textContent = cfg.mode === "cycle" ? "Cycling on its own" : cfg.mode;
-  }
+  (async () => {
+    if (q.get("d")) {
+      try { await loadSaved(q.get("d")); }
+      catch (err) { note.textContent = "Display not found — " + err.message; }
+    }
+    mount();
+    if (mirror) {
+      follow();
+      setInterval(() => { if (!document.hidden) follow(); }, 3000);
+    } else {
+      note.textContent = title || (cfg.mode === "cycle" ? "Cycling on its own" : cfg.mode);
+    }
+  })();
 
   // ---- chrome ------------------------------------------------------------
   let sleep = null;

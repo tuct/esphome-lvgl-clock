@@ -20,7 +20,11 @@
 
   let devices = [];
   let board = null;         // the selected device
+  // undefined = nobody has chosen yet, so pick a master. "" = the user chose
+  // none, and a poll three seconds later must not quietly undo that.
+  let chosen;
   let card = null;
+  let preview = null, previewKey = "";
   let editing = false;      // suspend polling-driven redraws while typing
   let poll = null;
 
@@ -67,6 +71,34 @@
     });
   }
 
+  // ---- sliders -----------------------------------------------------------
+  // Bound to a number entity: bounds and step come from Home Assistant rather
+  // than being duplicated here, so changing them in the YAML changes them here.
+  // The write happens on `change`, not `input` - one call when the thumb is
+  // released, not forty on the way there.
+  let dragging = null;
+  function slider(id, ent, fmt) {
+    const el = $(id), out = $(id + "v");
+    $("f-" + (id === "speed" ? "speed" : "transition")).classList.toggle("hidden", !ent);
+    if (!ent) return;
+    el.min = ent.min != null ? ent.min : 0;
+    el.max = ent.max != null ? ent.max : 100;
+    el.step = ent.step != null ? ent.step : 1;
+    // Never yank the thumb out from under a finger mid-drag.
+    if (dragging !== id) {
+      el.value = ent.state;
+      out.textContent = fmt(ent.state);
+    }
+    el.oninput = () => { dragging = id; out.textContent = fmt(el.value); };
+    el.onchange = async () => {
+      try {
+        await call("number", "set_value", { entity_id: ent.entity_id, value: Number(el.value) });
+      } catch (err) { setLive("err", `<b>Failed.</b> ${esc(err.message)}`); }
+      dragging = null;
+      refresh();
+    };
+  }
+
   const esc = s => String(s).replace(/[&<>"]/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -78,10 +110,22 @@
   function render() {
     const c = board ? board.controls : {};
     $("badge").classList.toggle("hidden", !board || !board.is_master);
-    $("control").classList.toggle("hidden", !board);
+    // The Wall panel stays visible whatever happens - it carries the board
+    // picker, and a page that hides the only way to choose a board when no
+    // board is chosen is a page you cannot recover from.
+    $("control").classList.toggle("nodevice", !board);
     $("editorpanel").classList.toggle("hidden", !board);
 
-    if (!board) return;
+    if (!board) {
+      // Stop the animation loops rather than leaving them running behind a
+      // hidden panel, burning a frame budget nobody is looking at.
+      if (card) { card.remove(); card = null; }
+      if (preview) { preview.remove(); preview = null; previewKey = ""; }
+      $("preview").classList.add("empty");
+      $("wallhint").textContent = "";
+      return;
+    }
+    syncPreview();
     $("wallhint").textContent = [board.model, board.sw].filter(Boolean).join(" · ");
 
     // Mode
@@ -114,6 +158,38 @@
         "cycle");
     }
 
+    // Movement
+    $("f-movement").classList.toggle("hidden", !c.movement);
+    if (c.movement) {
+      chips($("movements"), c.movement.options.map(o => ({ value: o, html: esc(pretty(o)) })),
+        c.movement.state,
+        v => call("select", "select_option", { entity_id: c.movement.entity_id, option: v }),
+        "movement");
+    }
+
+    // The two sliders
+    slider("transition", c.transition, v => `${v} s`);
+    slider("speed", c.mode_speed, v => `×${Number(v).toFixed(1)}`);
+
+    // Colours. `change`, not `input` - a colour picker fires continuously while
+    // you drag around the wheel, and each one of those is a packet to the wall.
+    const colorField = (id, ent) => {
+      const el = $(id);
+      if (!ent) return false;
+      if (document.activeElement !== el) el.value = ent.state || "#000000";
+      el.onchange = async () => {
+        try { await call("text", "set_value", { entity_id: ent.entity_id, value: el.value }); }
+        catch (err) { setLive("err", `<b>Failed.</b> ${esc(err.message)}`); }
+        refresh();
+      };
+      return true;
+    };
+    const anyColor = colorField("handcolor", c.hand_color) |
+                     colorField("bgcolor", c.bg_color);
+    $("f-colors").classList.toggle("hidden", !anyColor);
+    $("colornote").textContent = anyColor
+      ? "an automation can warm the wall at sunset" : "";
+
     // Cycle list
     $("f-cycle").classList.toggle("hidden", !c.cycle_modes);
     if (c.cycle_modes && !editing) {
@@ -126,10 +202,13 @@
       $("cycleinput").value = list.join(",");
     }
 
-    $("tablet").href = "display.html?mirror=1&board=" + encodeURIComponent(board.device_id);
     $("reload").classList.toggle("hidden", !c.reload);
-    $("temp").textContent = board.temperature && board.temperature.state
-      ? `${board.temperature.name}: ${board.temperature.state}` : "";
+    // Only when a sensor is there AND has a reading. `unknown` and
+    // `unavailable` are states too, and "Room Temperature: unknown" is worse
+    // than showing nothing.
+    const tp = board.temperature;
+    const has = tp && tp.state && !["unknown", "unavailable", ""].includes(tp.state);
+    $("temp").textContent = has ? `${tp.name}: ${tp.state}${tp.unit ? " " + tp.unit : ""}` : "";
 
     // Editor slot picker
     const slot = $("slot");
@@ -150,6 +229,34 @@
     else if (card) card.hass = hass;
   }
 
+  // ---- preview -----------------------------------------------------------
+  // The clock card, showing what the wall is showing. Rebuilt only when the
+  // mode or the pattern actually changes: setConfig restarts the animation, so
+  // rebuilding it on every three-second poll would make it stutter forever.
+  function syncPreview() {
+    const c = board.controls;
+    const mode = c.mode ? c.mode.state : "time";
+    const slotNo = c.pattern_slot ? Number(c.pattern_slot.state) : 0;
+    const slot = slotNo ? board.slots.find(s => s.slot === slotNo) : null;
+    const pattern = mode === "pattern" && slot && slot.state ? slot.state : null;
+    const key = mode + "|" + (pattern || "");
+    if (key === previewKey && preview) return;
+    previewKey = key;
+
+    const cfg = { type: "custom:clockclock24-card", mode, digit_gap: 0 };
+    if (pattern) cfg.pattern = pattern;
+    // `pattern` with an empty slot has nothing to draw; the card throws rather
+    // than showing a blank, so fall back to the clock.
+    if (mode === "pattern" && !pattern) cfg.mode = "time";
+    const next = document.createElement("clockclock24-card");
+    try { next.setConfig(cfg); }
+    catch (err) { previewKey = ""; return; }
+    if (preview) preview.remove();
+    preview = next;
+    $("preview").classList.remove("empty");
+    $("preview").appendChild(preview);
+  }
+
   function mountEditor() {
     if (card) card.remove();
     card = document.createElement("clockclock24-editor-card");
@@ -168,13 +275,13 @@
       setLive("on");
 
       const sel = $("board");
-      const keep = board && board.device_id;
-      sel.innerHTML = devices.length
-        ? devices.map(d => `<option value="${esc(d.device_id)}">${esc(d.device)}${
-            d.is_master ? "" : " (no marker)"}</option>`).join("")
-        : `<option value="">nothing found</option>`;
-      if (devices.some(d => d.device_id === keep)) sel.value = keep;
-      board = devices.find(d => d.device_id === sel.value) || devices[0] || null;
+      sel.innerHTML = `<option value="">${devices.length ? "— none —" : "nothing found"}</option>`
+        + devices.map(d => `<option value="${esc(d.device_id)}">${esc(d.device)}${
+            d.is_master ? "" : " (no marker)"}</option>`).join("");
+      if (chosen === undefined)
+        chosen = (devices.find(d => d.is_master) || devices[0] || {}).device_id || "";
+      sel.value = devices.some(d => d.device_id === chosen) ? chosen : "";
+      board = devices.find(d => d.device_id === sel.value) || null;
 
       if (!devices.length) {
         setLive("err",
@@ -194,7 +301,8 @@
 
   // ---- wiring ------------------------------------------------------------
   $("board").onchange = () => {
-    board = devices.find(d => d.device_id === $("board").value) || null;
+    chosen = $("board").value;
+    board = devices.find(d => d.device_id === chosen) || null;
     render();
   };
   $("slot").onchange = mountEditor;
@@ -252,17 +360,169 @@
     };
   });
 
-  // ---- cards note --------------------------------------------------------
+  // ---- displays ----------------------------------------------------------
+  // Each one is a full-screen page with its own look and its own link. Saved
+  // in the add-on's /data, so a tablet keeps pointing at the same thing across
+  // restarts and updates.
+  let displays = [];
+
+  const MODE_CHOICES = ["cycle", "time", "rotate_left", "flying_birds", "wave", "spiral",
+                        "wind", "rotating_maze", "zipper", "mirror_wave", "love", "pattern"];
+
+  function displayUrl(d) {
+    return "display.html?d=" + encodeURIComponent(d.id);
+  }
+
+  function renderDisplays() {
+    const host = $("displays");
+    if (!displays.length) {
+      host.innerHTML = `<p class="empty-note">No displays yet. <b>Add display</b> makes a
+        full-screen page with its own link — point a tablet at it and leave it there.</p>`;
+      return;
+    }
+    host.innerHTML = displays.map((d, n) => `
+      <div class="display" data-n="${n}">
+        <div class="top">
+          <input class="nm" data-k="name" value="${esc(d.name)}" placeholder="Name">
+          <span class="spacer"></span>
+          <a class="btn small" href="${esc(displayUrl(d))}" target="_blank" rel="noopener">Open</a>
+          <button class="ghost small" data-act="copy">Copy link</button>
+          <button class="ghost small" data-act="del" title="Remove this display">Remove</button>
+        </div>
+        <div class="grid">
+          <label><span>Follows</span>
+            <select data-k="board">
+              <option value="">nothing — runs on its own</option>
+              ${devices.map(v => `<option value="${esc(v.device_id)}"${
+                v.device_id === d.board ? " selected" : ""}>${esc(v.device)}</option>`).join("")}
+            </select></label>
+          <label><span>Shows</span>
+            <select data-k="mode">
+              ${MODE_CHOICES.map(m => `<option value="${m}"${
+                m === d.mode ? " selected" : ""}>${esc(pretty(m))}</option>`).join("")}
+            </select></label>
+          <label><span>Cycle every (s)</span>
+            <input type="number" data-k="cycle_interval" min="5" max="3600" value="${d.cycle_interval}"></label>
+          <label><span>Digit gap</span>
+            <input type="number" data-k="digit_gap" min="0" max="2" step="0.05" value="${d.digit_gap}"></label>
+        </div>
+        <div class="swatches">
+          <label><input type="checkbox" data-k="mirror"${d.mirror ? " checked" : ""}> Follow the wall's mode</label>
+          <label><input type="color" data-k="hand_color" value="${esc(d.hand_color)}"> Hands</label>
+          <label><input type="color" data-k="background" value="${esc(d.background)}"> Background</label>
+          <label><input type="checkbox" data-k="show_face"${d.show_face ? " checked" : ""}> Faces</label>
+          <label><input type="color" data-k="face_color" value="${esc(d.face_color)}"> Face</label>
+        </div>
+      </div>`).join("");
+
+    host.querySelectorAll(".display").forEach(el => {
+      const n = Number(el.dataset.n);
+      el.querySelectorAll("[data-k]").forEach(inp => {
+        inp.onchange = () => {
+          const k = inp.dataset.k;
+          displays[n][k] = inp.type === "checkbox" ? inp.checked
+                         : inp.type === "number" ? Number(inp.value) : inp.value;
+          saveDisplays();
+        };
+      });
+      el.querySelector('[data-act="del"]').onclick = () => {
+        if (!confirm(`Remove "${displays[n].name}"? Any tablet pointed at it will stop working.`)) return;
+        displays.splice(n, 1);
+        saveDisplays().then(renderDisplays);
+      };
+      el.querySelector('[data-act="copy"]').onclick = async (ev) => {
+        // The absolute URL, including the Ingress prefix - a relative one is
+        // useless on the tablet you are about to paste it into.
+        const url = new URL(displayUrl(displays[n]), location.href).href;
+        try { await navigator.clipboard.writeText(url); ev.target.textContent = "Copied"; }
+        catch { prompt("Copy this link:", url); }
+        setTimeout(() => { ev.target.textContent = "Copy link"; }, 1400);
+      };
+    });
+  }
+
+  async function saveDisplays() {
+    try {
+      const r = await api("api/displays", { displays });
+      displays = r.displays;
+    } catch (err) {
+      setLive("err", `<b>Could not save displays.</b> ${esc(err.message)}`);
+    }
+  }
+
+  $("adddisplay").onclick = async () => {
+    const n = displays.length + 1;
+    displays.push({
+      id: "d" + Date.now().toString(36), name: "Display " + n,
+      board: board ? board.device_id : "", mirror: true, mode: "cycle",
+      cycle: "", cycle_interval: 120, digit_gap: 0,
+      hand_color: "#ffffff", background: "#000000",
+      face_color: "#1f1f23", show_face: false,
+    });
+    await saveDisplays();
+    renderDisplays();
+  };
+
   (async () => {
     try {
-      const r = await api("api/card");
-      $("cardnote").innerHTML = r.installed
-        ? `Installed at <code>/local/${r.file}</code>. Register it once under ` +
-          `<b>Settings → Dashboards → ⋮ → Resources → Add</b>, type ` +
-          `<b>JavaScript module</b>, then add any of these as a manual card:`
-        : `Not installed — ${esc(r.error || "turn on install_card in the add-on options")}.`;
-    } catch { $("cardnote").textContent = "Card status unavailable."; }
+      const r = await api("api/displays");
+      displays = r.displays || [];
+    } catch { displays = []; }
+    renderDisplays();
   })();
+
+  // ---- the card ----------------------------------------------------------
+  // Two halves: the FILE has to be in /config/www, and Lovelace has to know
+  // about it. Copying the file is easy over REST; the resource registry is
+  // WebSocket-only, which is what hass_ws.py exists for.
+  async function cardStatus() {
+    const note = $("cardnote"), btn = $("register"), state = $("resstate");
+    try {
+      const r = await api("api/card");
+      if (!r.installed) {
+        state.textContent = "";
+        btn.classList.add("hidden");
+        note.innerHTML = `Not installed — ${esc(r.error || "turn on install_card in the add-on options")}.`;
+        return;
+      }
+      if (r.registered) {
+        state.textContent = "installed and registered";
+        btn.classList.add("hidden");
+        note.innerHTML = `<code>${esc(r.url)}</code> is a registered Lovelace ` +
+          `resource. Add any of these as a manual card:`;
+      } else if (r.can_register) {
+        state.textContent = "";
+        btn.classList.remove("hidden");
+        btn.disabled = false;
+        btn.textContent = "Install card";
+        note.innerHTML = `The bundle is at <code>${esc(r.url)}</code> but Lovelace ` +
+          `does not know about it yet. <b>Install card</b> registers it — then add ` +
+          `any of these as a manual card:`;
+      } else {
+        // Almost always `lovelace: mode: yaml`, where the registry is not the
+        // source of truth. Say so instead of offering a button that cannot work.
+        state.textContent = "";
+        btn.classList.add("hidden");
+        note.innerHTML = `The bundle is at <code>${esc(r.url)}</code>. Registering it ` +
+          `automatically is not possible here (${esc(r.why || "resources unavailable")}) — ` +
+          `add it under <b>Settings → Dashboards → ⋮ → Resources</b>, or in your ` +
+          `<code>lovelace:</code> YAML, as a <b>JavaScript module</b>. Then:`;
+      }
+    } catch (err) {
+      $("cardnote").textContent = "Card status unavailable: " + err.message;
+    }
+  }
+
+  $("register").onclick = async () => {
+    const btn = $("register");
+    btn.disabled = true;
+    btn.textContent = "Installing…";
+    try { await api("api/card/register", {}); }
+    catch (err) { setLive("err", `<b>Could not register the card.</b> ${esc(err.message)}`); }
+    await cardStatus();
+  };
+
+  cardStatus();
 
   if (!window.CC) {
     setLive("err", "<b>Engine missing.</b> Run <code>stage.sh</code> and rebuild the add-on.");

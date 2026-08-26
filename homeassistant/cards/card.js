@@ -29,7 +29,9 @@
     background: "#000000",
     face_color: "#1f1f23",
     show_face: false,
-    digit_gap: 0.35,            // extra space between digits, in clock widths
+    // 0 = the real wall: 24 panels on one frame, evenly spaced. Raise it for a
+    // dashboard card if you want the HH:MM grouping to read at a glance.
+    digit_gap: 0,               // extra space between digits, in clock widths
     fullscreen: false,          // fill the viewport height instead of flowing
     pattern: null,              // "<name>:<base64>" from the sandbox
     time_entity: null,          // optional; default is the browser's clock
@@ -72,7 +74,12 @@
       this.shadowRoot.innerHTML = `
         <style>
           :host { display: block; }
-          ha-card { overflow: hidden; }
+          /* display:block explicitly. Inside Lovelace ha-card is a defined
+             element and already block, but in the add-on's tablet view it is
+             UNDEFINED - and an unknown element defaults to display:inline, so
+             the canvas's width:100% resolves against a shrink-to-fit inline
+             box and the wall collapses to nothing. */
+          ha-card { display: block; overflow: hidden; }
           .wrap { background: ${cfg.background}; }
           canvas {
             display: block; width: 100%; height: auto;

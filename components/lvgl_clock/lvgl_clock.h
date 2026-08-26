@@ -10,6 +10,9 @@
 #endif
 
 #include <string>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 namespace esphome {
@@ -186,6 +189,32 @@ enum MovementMode {
   CC_MOVE_LONG,
 };
 
+// Same names the YAML uses, so a Home Assistant select and a config file spell
+// it the same way. Like the mode enum this is ALSO the wire format now - the
+// master broadcasts the integer - so the order is append-only.
+inline const char *movement_name(MovementMode m) {
+  switch (m) {
+    case CC_MOVE_CLOCKWISE: return "clockwise";
+    case CC_MOVE_COUNTER:   return "counter";
+    case CC_MOVE_LONG:      return "long";
+    default:                return "opposite";
+  }
+}
+inline int movement_from_name(const std::string &name) {
+  for (int m = CC_MOVE_OPPOSITE; m <= CC_MOVE_LONG; m++)
+    if (name == movement_name((MovementMode) m))
+      return m;
+  return -1;
+}
+
+inline uint32_t pack_rgb(const Color &c) {
+  return ((uint32_t) c.r << 16) | ((uint32_t) c.g << 8) | (uint32_t) c.b;
+}
+inline Color unpack_rgb(uint32_t v) {
+  return Color((uint8_t) ((v >> 16) & 0xFF), (uint8_t) ((v >> 8) & 0xFF),
+               (uint8_t) (v & 0xFF));
+}
+
 // "no temperature" - outside any plausible reading, and what goes on the wire
 // when the master has no sensor or it has not published yet.
 static const int TEMP_NONE = -1000;
@@ -213,8 +242,58 @@ class LvglClock : public Component, public lvgl::LvCompound {
   void set_style(ClockStyle s) { this->style_ = s; }
   void set_twenty_four_hour(bool on) { this->h24_ = on; }
   void set_show_face(bool show) { this->show_face_ = show; }
-  void set_foreground(Color c) { this->fg_ = c; }
-  void set_background(Color c) { this->background_ = c; }
+  // Colours are runtime state, not just config: they go on the wire so a
+  // single automation can warm the whole wall at sunset. Setting one marks the
+  // canvas dirty, or the change waits for the next hand movement - which in
+  // `time` at 03:00 is a minute away.
+  void set_foreground(Color c) {
+    if (c.r == this->fg_.r && c.g == this->fg_.g && c.b == this->fg_.b)
+      return;
+    this->fg_ = c;
+    this->cc_dirty_ = true;
+  }
+  void set_background(Color c) {
+    if (c.r == this->background_.r && c.g == this->background_.g &&
+        c.b == this->background_.b)
+      return;
+    this->background_ = c;
+    this->cc_dirty_ = true;
+  }
+  Color get_foreground() const { return this->fg_; }
+  Color get_background() const { return this->background_; }
+
+  // Packed 0xRRGGBB - what goes on the wire and what a `#rrggbb` text entity
+  // parses to. 24 bits, so it fits an int field with room to spare.
+  uint32_t get_foreground_rgb() const { return pack_rgb(this->fg_); }
+  uint32_t get_background_rgb() const { return pack_rgb(this->background_); }
+  void set_foreground_rgb(uint32_t v) { this->set_foreground(unpack_rgb(v)); }
+  void set_background_rgb(uint32_t v) { this->set_background(unpack_rgb(v)); }
+
+  // "#rrggbb", "rrggbb" or "#rgb". Returns false on anything else rather than
+  // guessing - a colour that silently becomes black is worse than one that
+  // refuses and says so in the log.
+  static bool rgb_from_string(const std::string &s, uint32_t &out) {
+    std::string h = s;
+    if (!h.empty() && h[0] == '#')
+      h.erase(0, 1);
+    if (h.size() == 3) {
+      std::string full;
+      for (char c : h) { full += c; full += c; }
+      h = full;
+    }
+    if (h.size() != 6)
+      return false;
+    for (char c : h)
+      if (!isxdigit((unsigned char) c))
+        return false;
+    out = (uint32_t) strtoul(h.c_str(), nullptr, 16);
+    return true;
+  }
+  static std::string rgb_to_string(uint32_t v) {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "#%06x", (unsigned) (v & 0xFFFFFFu));
+    return std::string(buf);
+  }
   // Transparent background: clears the canvas to fully transparent each frame
   // instead of filling `background`, so widgets layered behind the clock show
   // through the gaps between hands/ticks/digits. Needs the canvas allocated
@@ -273,7 +352,20 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // Margin in px between the clock block and the edge of the canvas.
   void set_padding_outside(int px) { this->pad_outside_ = px; }
   void set_movement(MovementMode m) { this->movement_ = m; }
-  void set_mode_speed(float s) { this->mode_speed_ = s; }
+  MovementMode get_movement() const { return this->movement_; }
+  std::string get_movement_name() const { return movement_name(this->movement_); }
+  bool set_movement_by_name(const std::string &name) {
+    int m = movement_from_name(name);
+    if (m < 0)
+      return false;
+    this->movement_ = (MovementMode) m;
+    return true;
+  }
+  uint32_t get_transition_length() const { return this->transition_ms_; }
+  // NOT inline: a speed change moves where the choreography IS, not just how
+  // fast it runs from here, so it has to blend rather than snap. See the .cpp.
+  void set_mode_speed(float s);
+  float get_mode_speed() const { return this->mode_speed_; }
   void set_mode(ClockMode m);
   // Which pattern `mode: pattern` draws. Set from the sync packet, so the whole
   // wall plays the same one; a slot with nothing in it falls back to the time.

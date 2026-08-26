@@ -9,7 +9,7 @@
 (function () {
   const C = window.CC;
   const { NUM_HANDS, NUM_DIGITS, CLOCKS_PER_DIGIT, PARK, FONT,
-          wrap360, shortestDelta, ease, easeOut, wallPos, MODES } = C;
+          wrap360, shortestDelta, ease, easeOut, wallPos, MODES, resolveMode } = C;
 
   const BLEND_NONE = 0, BLEND_PENDING = 1, BLEND_ACTIVE = 2;
 
@@ -46,6 +46,15 @@
     }
 
     setMode(m, nowMs) {
+      // A name off a real wall may be the firmware's rather than ours.
+      m = resolveMode(m);
+      // And an unknown one is REFUSED rather than stored. Storing it meant
+      // frame() looked up undefined and threw on every animation frame, which
+      // does not stop the loop - it just kills the wall and floods the console.
+      if (!MODES[m]) {
+        console.warn(`[clockclock24] unknown mode "${m}" - staying on "${this.mode}"`);
+        return;
+      }
       if (m === this.mode) return;
       if (m === "time") { this.settleToTime(nowMs); return; }
       // Remember where every hand is; blend_into_mode_() converts these to
@@ -191,7 +200,9 @@
     frame(nowMs, dtS) {
       const settling = this.animating && this.settleFrom !== "time";
       const live = settling ? this.settleFrom : this.mode;
-      const spec = MODES[live];
+      // Belt and braces: setMode refuses unknown modes, so this can only fire
+      // if something set .mode directly. Showing the time beats throwing.
+      const spec = MODES[live] || MODES.time;
 
       // The choreography clock is HELD AT 0 until the entry blend finishes, so
       // the blend chases a STILL target. Without this every hand fades toward

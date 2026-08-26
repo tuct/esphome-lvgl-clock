@@ -394,7 +394,7 @@ handed it.
 The wire format is one plain line, so a serial monitor is enough to debug it:
 
 ```
-CC24 <epoch> <ms> <mode> <demo_min>
+CC24 <epoch> <ms> <mode> <demo_min> <temp> <slot> <movement> <transition_ms> <speed_x100> <hand_rgb> <bg_rgb>
 ```
 
 Both ends log mode changes by name (`TX mode -> spiral`, `RX mode -> spiral`) at
@@ -408,6 +408,21 @@ whole seconds only, so this platform sets the clock itself with microsecond
 precision. `<demo_min>` carries the master's fake-minute counter in `mode:
 demo` (`-1` otherwise) — without it each node would count its own and every
 display would show a different time.
+
+Every field after `<mode>` is **optional on the way in**: the parser fills a
+default for anything the line does not carry, and ignores anything it does not
+recognise. That is what makes a mixed-firmware wall survive — an older listener
+reads a newer master's line and simply stops at the last field it knows. It is
+also why the format only ever **grows**: fields are appended, never reordered
+or repurposed, and the mode and movement enums are append-only for the same
+reason.
+
+The last five carry how the wall *moves* and what it is *drawn in* — the routing rule for a sweep, how
+long a sweep takes, and the choreography speed multiplier. They are set on the
+master (as Home Assistant entities) and broadcast, because they have to be the
+same everywhere: `mode_speed` scales the time base, so two boards on different
+values do not merely look different, they drift apart.
+
 
 Three details that only matter once there is more than one node, but matter a
 lot then:
@@ -831,7 +846,24 @@ editable while it runs — no reflash at all, not even of the master.
 | `Pattern` | `select`, 1–8. Which pattern `mode: pattern` draws. Separate from `Mode` so switching between your own patterns is not also a mode change |
 | `Cycle modes` | `text`. `birds,temp,wave,fan,shear` — **modes and pattern names**, in order. Repeats are meaningful, so listing `temp` every other entry gives it half the slots |
 | `Cycle interval` | `select`, **`off`** or 1…60 min. `off` stops the rotation, leaving `Mode` in charge. The 35 s window itself is fixed; only the cadence is yours |
+| `Movement` | `select`. `opposite` / `clockwise` / `counter` / `long` — how the two hands travel to a new digit |
+| `Transition length` | `number`, seconds. The sweep time, and the fade into a mode |
+| `Mode speed` | `number`, ×1 is the base. See below — this one is not a plain multiplier |
+| `Hand colour` · `Background colour` | `text`, `#rrggbb`. Runtime, and on the wire — so a sunset automation warms the whole wall at once |
 | `Reload patterns from firmware` | `button`. Throws away runtime edits and restores the folder — the way out of a bad one |
+
+All of them are **broadcast**, so a change on the master reaches every listener
+on the next packet. That is not a convenience: `mode_speed` scales the
+animation's time base, so two boards on different values drift apart rather
+than merely look different. Sending them from one place is what makes that
+impossible to get wrong.
+
+**Changing the speed is the interesting one.** A choreography is evaluated at
+`t × mode_speed`, so a new multiplier moves *where the animation is*, not only
+how fast it runs from there. `set_mode_speed()` blends into the new position
+instead of snapping — the same thing entering a mode does — and every board
+applies the same number from the same packet, so the wall eases across together
+and the phase lock survives the change.
 
 These are stock `template` entities in the master's YAML rather than a custom
 platform, so they can be renamed, dropped or added to without touching this

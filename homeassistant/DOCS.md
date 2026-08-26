@@ -56,43 +56,67 @@ More than one wall is fine; they all appear in the dropdown.
 
 ## The wall panel
 
+At the top is a **preview** — the same engine as the wall, showing what the
+wall is showing. The **Board** picker sits in this panel's header rather than
+the page's, because it picks what this panel acts on.
+
+
 | | |
 |---|---|
 | **Mode** | What the wall is doing right now, and a way to change it. This is an **override**: with a cycle interval set, the next window opens on schedule and takes the wall back. Set the interval to `off` to make a choice stick. |
 | **Pattern** | Which slot `pattern` mode draws. Each chip is labelled with that slot's own pattern name, because "3" tells you nothing. Empty slots fall back to showing the time. |
 | **Cycle every** | How often a window opens. The 35 s window itself is fixed — only the cadence is yours. `off` stops the rotation entirely. |
 | **Cycle list** | The rotation, in order. **Repeats count**: listing `temp` every other entry gives it half the slots. The chip matching the current mode is outlined. |
+| **Movement** | How the two hands travel to a new digit — `opposite` (the ClockClock look, hands arriving from either side), `clockwise`, `counter`, or `long`. |
+| **Transition** | How long a sweep takes, and how long a mode takes to fade in. The 35 s choreography window itself is fixed. |
+| **Mode speed** | Choreography rate, ×1 is the base. |
+| **Colours** | The hands and the background, live. Both are on the wire, so one change reaches all 24 clocks — and both are ordinary `text` entities, so an automation can warm the wall at sunset |
 | **Reload patterns from firmware** | Throws away everything written from Home Assistant and goes back to the `patterns/` folder as compiled in. The way out of a bad edit. |
+
+Movement, Transition, Mode speed and the two colours are set on the **master** and broadcast to
+all seven listeners, because they have to be the same everywhere — `mode_speed`
+scales the animation's time base, so two boards on different values do not just
+look different, they drift apart.
+
+Changing the speed is the interesting one: a choreography is evaluated at
+`t × mode_speed`, so a new multiplier moves *where the animation is*, not only
+how fast it runs from there. Rather than snap, the wall blends into the new
+position — the same thing it does entering a mode — and every board applies the
+same number from the same packet, so it eases across together.
 
 The Mode select republishes every second, so the wall moving itself on shows up
 here without you touching anything. Names the master does not recognise are
 dropped from a cycle list with a warning and it republishes what it kept — so a
 typo shows up rather than silently changing the wall.
 
-## The tablet view
+## Displays
 
-**Full screen**, top right, opens a page that is the wall and nothing else:
-black, edge to edge, controls fading out after three seconds. Point a tablet at
-it and leave it there.
+A **display** is a full-screen page with its own link and its own look: black,
+edge to edge, controls fading out after three seconds. Point a tablet at one
+and leave it there.
 
-By default it **mirrors** the board selected in the panel — the wall changes
-mode, the tablet follows about three seconds later. It only rebuilds when the
-mode has actually changed, because restarting the animation every poll would
-stutter.
-
-Query string, all optional:
+**Add display** makes one. Each has:
 
 | | |
 |---|---|
-| `?mirror=1` | Follow the real wall. Off, it cycles on its own |
-| `?board=<id>` | Which board to follow. Default: the first master found |
-| `?mode=wave` | A fixed mode instead of the rotation |
-| `?cycle=a,b,c` | The rotation to run |
-| `?interval=120` | Seconds between windows |
-| `?gap=0` | Digit gap, in clock widths |
+| **Follows** | Which board it watches, or nothing — then it runs on its own |
+| **Follow the wall's mode** | On, it mirrors what the wall is doing. Off, it cycles independently |
+| **Shows** | A fixed mode, or `cycle` |
+| **Cycle every** | Seconds between windows |
+| **Digit gap** | Space between digits, in clock widths. `0` matches the real wall |
+| **Hands / Background / Faces** | Its own colours — a hall tablet and a desk screen do not have to match |
 
-With no wall on the network it says so and keeps running on its own — a tablet
-that goes blank because a device is offline is a worse tablet.
+**Copy link** gives you the full URL including the Ingress prefix, which is
+what a tablet needs. They are stored in the add-on's own `/data`, so they
+survive restarts and updates.
+
+Mirroring only rebuilds the card when the mode has actually changed — a tablet
+that restarts its animation every three seconds is worse than one a second
+behind. With no wall reachable it says so and keeps running rather than going
+blank.
+
+A hand-written link still works without a saved display: `?mirror=1`,
+`?board=<id>`, `?mode=wave`, `?cycle=a,b,c`, `?interval=120`, `?gap=0`.
 
 > Inside Home Assistant this page is an iframe, and the browser's true
 > full-screen mode is the frame's to grant, not ours. The page is full-bleed
@@ -103,15 +127,49 @@ that goes blank because a device is offline is a worse tablet.
 The editor is the real firmware engine running in the browser: the same
 choreographies, the same easing, the same 24-clock geometry.
 
-1. Pick the slot to **write to**.
-2. **Click** a clock to select it, **shift-click** for several; every edit then
-   applies to all of them. **Drag** its hands to pose it, snapped to 15°.
-3. Set a **direction and speed per hand**. The speed slider is squared, so the
-   slow end — where a pattern actually reads — gets half the travel.
-4. It **runs while you edit**. **Back to pose** puts every hand back on what you
-   configured, not on wherever the motion drifted to.
-5. **Copy to all 24**, or to the primary clock's row or column.
-6. **Send to wall.**
+**Hover any clock** to see what it is set to — both hands' angles, directions
+and rates. Twenty-four pairs of hands turning at slightly different speeds is
+not something you can read off the canvas, and the controls only ever show the
+one you have selected.
+
+### Selection
+
+**Click** a clock to select it, **shift-click** to add or remove, or use
+**All 24 / Row / Column / Just one**. Every edit in this section applies to the
+whole selection.
+
+### Hands
+
+Direction and rate per hand. The slider is in **percent, in 0.5 steps**, and
+squared — a linear travel spends nine tenths of itself above 9°/s, and the slow
+end is where a pattern reads. The readout gives both the percentage and the
+resulting °/s, so a value you liked is one you can dial back to.
+
+**Back to pose** puts the selected hands on the pose you configured.
+**Wall to pose** is its inverse: it freezes wherever the hands are *now* as the
+pose, so anything you like the look of mid-motion can become a starting point.
+Both act on the selection only.
+
+### Copy
+
+Copy carries what you tell it to:
+
+| | |
+|---|---|
+| **Everything** | Pose and motion |
+| **Position only** | Where the hands sit, leaving each target turning as it was |
+| **Motion only** | Direction and rate, leaving each target's pose alone |
+
+**Copy** remembers the primary clock; **Paste into selection** writes it into
+every selected one. **All 24 / Its row / Its column** are shortcuts that skip
+the selection step. Scope applies to all of them — "make this whole row turn
+like this one but keep where each hand is" is a normal thing to want, and
+pasting everything is the one operation that cannot express it.
+
+### The pattern
+
+Play/pause, and the whole-wall actions: **Load from wall** reads the slot,
+**Send to wall** writes it, **Copy string** gives you the text.
 
 A packed 24-clock pattern is about 164 characters against the master's 255, so
 the whole wall fits in one text field with room to spare.
@@ -165,7 +223,7 @@ type: custom:clockclock24-card
 | `background` | `#000000` | |
 | `face_color` | `#1f1f23` | Only drawn when `show_face` |
 | `show_face` | `false` | A disc behind each pair of hands |
-| `digit_gap` | `0.35` | Space between digits, in clock widths. `0` for one even grid |
+| `digit_gap` | `0` | Space between digits, in clock widths. `0` matches the real wall, which is 24 evenly-spaced panels; raise it to make the HH:MM grouping read |
 | `fullscreen` | `false` | Fill the viewport height — for a wall tablet |
 | `pattern` | — | A pattern string from the editor |
 | `time_entity` | — | Optional; the browser's own clock is used otherwise |
@@ -175,7 +233,6 @@ A wall tablet:
 ```yaml
 type: custom:clockclock24-card
 fullscreen: true
-digit_gap: 0
 cycle: [wave, wind, rotating_maze, zipper, mirror_wave]
 cycle_interval: 120
 ```

@@ -130,6 +130,27 @@ void SyncTime::update() {
     if (mode == (int) CC_MODE_DEMO && demo_min >= 0)
       this->clocks_[i]->adopt_demo_min(demo_min);
   }
+  // How the wall moves: the routing rule for a sweep, how long a sweep takes,
+  // and the choreography speed multiplier. The picker owns all three, exactly
+  // as it owns the mode, and the same values go to this board's other panels
+  // and out on the wire. Every board has to agree: mode_speed in particular
+  // scales the time base, so two boards on different values drift apart rather
+  // than merely look different.
+  int movement = primary != nullptr ? (int) primary->get_movement() : 0;
+  int trans_ms = primary != nullptr ? (int) primary->get_transition_length() : 0;
+  int speed100 = primary != nullptr ? (int) lroundf(primary->get_mode_speed() * 100.0f) : 100;
+  // And what it is drawn in. Colours are on the wire so one automation can
+  // warm the whole wall at sunset instead of eight.
+  int fg_rgb = primary != nullptr ? (int) primary->get_foreground_rgb() : 0xFFFFFF;
+  int bg_rgb = primary != nullptr ? (int) primary->get_background_rgb() : 0x000000;
+  for (size_t i = 1; i < this->clocks_.size(); i++) {
+    this->clocks_[i]->set_movement((MovementMode) movement);
+    this->clocks_[i]->set_transition_length((uint32_t) trans_ms);
+    this->clocks_[i]->set_mode_speed(speed100 / 100.0f);
+    this->clocks_[i]->set_foreground_rgb((uint32_t) fg_rgb);
+    this->clocks_[i]->set_background_rgb((uint32_t) bg_rgb);
+  }
+
   // The wall's temperature, from the master's sensor. TEMP_NONE when there is
   // no sensor or it has not published - the slaves then know to skip `temp`
   // rather than draw a stale or empty face.
@@ -145,10 +166,14 @@ void SyncTime::update() {
     clock->adopt_temperature(temp);
   this->last_temp_ = temp;
 
-  char out[56];
-  int n = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d %d\n", (unsigned) epoch, (unsigned) ms, mode,
-                   demo_min, temp, this->pattern_slot_);
-  if (n <= 0)
+  // Nine fields now. Sized for the worst case with room to spare, and the
+  // truncation check matters: snprintf returns what it WOULD have written, so
+  // a short buffer silently ships a line with the last field cut in half.
+  char out[96];
+  int n = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d %d %d %d %d %d %d\n", (unsigned) epoch,
+                   (unsigned) ms, mode, demo_min, temp, this->pattern_slot_, movement, trans_ms,
+                   speed100, fg_rgb, bg_rgb);
+  if (n <= 0 || n >= (int) sizeof(out))
     return;
 
   // Send the time we expect it to be when the packet LANDS, not when we
@@ -169,9 +194,10 @@ void SyncTime::update() {
     // Re-format with the corrected stamp. The length can shift by a digit,
     // which moves the wire time by <0.1 ms - far below the jitter this is
     // correcting for, so one pass is enough.
-    int n2 = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d %d\n", (unsigned) adj_epoch,
-                      (unsigned) adj_ms, mode, demo_min, temp, this->pattern_slot_);
-    if (n2 > 0)
+    int n2 = snprintf(out, sizeof(out), "CC24 %u %u %d %d %d %d %d %d %d %d %d\n",
+                      (unsigned) adj_epoch, (unsigned) adj_ms, mode, demo_min, temp,
+                      this->pattern_slot_, movement, trans_ms, speed100, fg_rgb, bg_rgb);
+    if (n2 > 0 && n2 < (int) sizeof(out))
       n = n2;
   }
   this->write_array((const uint8_t *) out, (size_t) n);
@@ -363,6 +389,26 @@ void SyncTime::handle_line_() {
   int pattern_slot = (int) strtol(p, &end, 10);
   if (end == p)
     pattern_slot = 0;
+  p = end;
+  // Optional 7th, 8th and 9th fields: how a sweep routes, how long it takes,
+  // and the choreography speed in hundredths. All absent from an older
+  // master's packets, which reads as "keep whatever this board was compiled
+  // with" - the same rule every optional field before them follows.
+  int movement = (int) strtol(p, &end, 10);
+  const bool have_movement = end != p;
+  p = end;
+  int trans_ms = (int) strtol(p, &end, 10);
+  const bool have_trans = end != p;
+  p = end;
+  int speed100 = (int) strtol(p, &end, 10);
+  const bool have_speed = end != p;
+  p = end;
+  // Optional 10th and 11th: what the wall is drawn in, packed 0xRRGGBB.
+  int fg_rgb = (int) strtol(p, &end, 10);
+  const bool have_fg = end != p;
+  p = end;
+  int bg_rgb = (int) strtol(p, &end, 10);
+  const bool have_bg = end != p;
 
   // epoch 0 is the master saying "I have no time yet, but here is the mode" -
   // that is how the boot animation reaches the wall before SNTP lands, and how
@@ -407,6 +453,51 @@ void SyncTime::handle_line_() {
   }
   for (auto *clock : this->clocks_)
     clock->adopt_temperature(temp);
+
+  // How the wall moves. Range-checked rather than trusted: these arrive from a
+  // master that may be running newer firmware than this board, and an unknown
+  // movement or a nonsense speed should be ignored, not applied. The setters
+  // are all no-ops when the value is unchanged, so this is safe every packet.
+  if (have_movement && movement >= (int) CC_MOVE_OPPOSITE && movement <= (int) CC_MOVE_LONG) {
+    if (movement != this->last_rx_movement_) {
+      this->last_rx_movement_ = movement;
+      ESP_LOGI(TAG, "RX movement -> %s", movement_name((MovementMode) movement));
+    }
+    for (auto *clock : this->clocks_)
+      clock->set_movement((MovementMode) movement);
+  }
+  if (have_trans && trans_ms >= 0 && trans_ms <= 60000) {
+    if (trans_ms != this->last_rx_trans_ms_) {
+      this->last_rx_trans_ms_ = trans_ms;
+      ESP_LOGI(TAG, "RX transition length -> %d ms", trans_ms);
+    }
+    for (auto *clock : this->clocks_)
+      clock->set_transition_length((uint32_t) trans_ms);
+  }
+  if (have_fg && fg_rgb >= 0 && fg_rgb <= 0xFFFFFF) {
+    if (fg_rgb != this->last_rx_fg_) {
+      this->last_rx_fg_ = fg_rgb;
+      ESP_LOGI(TAG, "RX hand colour -> #%06x", (unsigned) fg_rgb);
+    }
+    for (auto *clock : this->clocks_)
+      clock->set_foreground_rgb((uint32_t) fg_rgb);
+  }
+  if (have_bg && bg_rgb >= 0 && bg_rgb <= 0xFFFFFF) {
+    if (bg_rgb != this->last_rx_bg_) {
+      this->last_rx_bg_ = bg_rgb;
+      ESP_LOGI(TAG, "RX background -> #%06x", (unsigned) bg_rgb);
+    }
+    for (auto *clock : this->clocks_)
+      clock->set_background_rgb((uint32_t) bg_rgb);
+  }
+  if (have_speed && speed100 >= 10 && speed100 <= 500) {
+    if (speed100 != this->last_rx_speed100_) {
+      this->last_rx_speed100_ = speed100;
+      ESP_LOGI(TAG, "RX mode speed -> x%.2f", speed100 / 100.0f);
+    }
+    for (auto *clock : this->clocks_)
+      clock->set_mode_speed(speed100 / 100.0f);
+  }
 
   // set_mode() is a no-op when the mode is unchanged, so this is safe to call
   // on every packet. Every widget on this node gets it: on a multi-panel board

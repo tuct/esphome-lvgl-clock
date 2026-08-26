@@ -20,14 +20,7 @@
       <p class="sub">Twenty-four little analogue clocks, one digital one.</p>
     </div>
   </div>
-  <div class="boardpick">
-    <label for="board">Board</label>
-    <div class="selwrap"><select id="board"><option>searching…</option></select></div>
-    <span id="badge" class="badge hidden">master</span>
-    <span id="live" class="dot" title="connection"></span>
-    <a id="tablet" class="tabletbtn" href="display.html?mirror=1" target="_blank"
-       rel="noopener" title="Full-bleed clock — open on a tablet">Full screen</a>
-  </div>
+  <span id="live" class="dot" title="connection"></span>
 </header>
 
 <div id="banner" class="banner hidden"></div>
@@ -37,8 +30,16 @@
   <section class="panel" id="control">
     <div class="panel-head">
       <h2>The wall</h2>
-      <span class="hint" id="wallhint"></span>
+      <div class="headctl">
+        <span class="hint" id="wallhint"></span>
+        <label for="board">Board</label>
+        <div class="selwrap"><select id="board"><option>searching…</option></select></div>
+        <span id="badge" class="badge hidden">master</span>
+      </div>
     </div>
+
+    <!-- What the wall is showing, in the same engine as the wall. -->
+    <div class="preview" id="preview"></div>
 
     <div class="field" id="f-mode">
       <div class="flabel">Mode<span class="fnote">what the wall is doing right now</span></div>
@@ -54,6 +55,35 @@
       <div class="field" id="f-interval">
         <div class="flabel">Cycle every<span class="fnote"><code>off</code> holds the mode you pick</span></div>
         <div class="chips tight" id="intervals"></div>
+      </div>
+    </div>
+
+    <div class="field" id="f-movement">
+      <div class="flabel">Movement<span class="fnote">how the hands travel to a new digit</span></div>
+      <div class="chips tight" id="movements"></div>
+    </div>
+
+    <div class="split">
+      <div class="field" id="f-transition">
+        <div class="flabel">Transition<span class="fnote">how long a sweep takes</span></div>
+        <div class="sliderrow">
+          <input type="range" id="transition"><output id="transitionv"></output>
+        </div>
+      </div>
+      <div class="field" id="f-speed">
+        <div class="flabel">Mode speed<span class="fnote">choreography rate, ×1 is the base</span></div>
+        <div class="sliderrow">
+          <input type="range" id="speed"><output id="speedv"></output>
+        </div>
+      </div>
+    </div>
+
+    <div class="field" id="f-colors">
+      <div class="flabel">Colours<span class="fnote">on the wire — one change reaches all 24</span></div>
+      <div class="swatchrow">
+        <label><input type="color" id="handcolor"> Hands</label>
+        <label><input type="color" id="bgcolor"> Background</label>
+        <span class="hint" id="colornote"></span>
       </div>
     </div>
 
@@ -95,11 +125,26 @@
     </p>
   </section>
 
+  <!-- ---- full-screen displays ------------------------------------------ -->
+  <section class="panel" id="displaypanel">
+    <div class="panel-head">
+      <h2>Displays</h2>
+      <div class="headctl">
+        <span class="hint">full-screen views for tablets — each with its own look</span>
+        <button class="ghost" id="adddisplay">Add display</button>
+      </div>
+    </div>
+    <div id="displays"></div>
+  </section>
+
   <!-- ---- no hardware needed ------------------------------------------ -->
   <section class="panel" id="cardpanel">
     <div class="panel-head">
       <h2>On a dashboard</h2>
-      <span class="hint">the same engine, no hardware required</span>
+      <div class="headctl">
+        <span class="hint" id="resstate"></span>
+        <button class="primary hidden" id="register">Install card</button>
+      </div>
     </div>
     <p class="note" id="cardnote">…</p>
     <div class="recipes">
@@ -111,11 +156,10 @@
       </article>
       <article class="recipe">
         <h3>Full screen</h3>
-        <p>For a wall tablet, as a dashboard card. Or use <b>Full screen</b> at the
-           top of this page, which needs no dashboard at all.</p>
+        <p>For a wall tablet, as a dashboard card. Or make one under
+           <b>Displays</b> above, which needs no dashboard at all.</p>
         <pre>type: custom:clockclock24-card
 fullscreen: true
-digit_gap: 0
 cycle: [wave, wind, rotating_maze, zipper, mirror_wave]
 cycle_interval: 120</pre>
         <button class="ghost copy">Copy</button>
@@ -135,6 +179,7 @@ entity: text.cc24_board_d_pattern_1</pre>
 <script src="sim/engine.js"></script>
 <script src="sim/wall.js"></script>
 <script src="sim/pattern.js"></script>
+<script src="cards/card.js"></script>
 <script src="cards/editor-card.js"></script>
 <script src="ui/app.js"></script>
 </body>

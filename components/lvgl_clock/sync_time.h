@@ -126,7 +126,12 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   // "CC24 4294967295 999 3 59 -1000 7\n" is 33 bytes and a pattern line
   // "CCPC 7 23 359 359 -1 -1 100 100\n" is 32; 64 leaves room for both plus
   // slop, and there is always a NUL before parsing.
-  char rx_buf_[64];
+  // Matches the TX buffer in sync_time.cpp. The wire format only ever GROWS -
+  // every field is appended and older nodes ignore the tail - so an RX buffer
+  // smaller than what a master can send is a future in which listeners start
+  // dropping whole packets as "overlong". A full 9-field line is 47 bytes; the
+  // headroom is the point.
+  char rx_buf_[96];
   uint8_t rx_len_{0};
   bool synced_{false};
   // Mirrors what the widgets were last told. Starts true so setup()'s
@@ -151,6 +156,13 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   // Slave only: last mode taken off the wire, so a change is logged once
   // rather than on every packet. -1 = nothing received yet.
   int last_rx_mode_{-1};
+  // Last movement/transition/speed seen on the wire, so the log says something
+  // only when the wall actually changes rather than once a second forever.
+  int last_rx_movement_{-1};
+  int last_rx_trans_ms_{-1};
+  int last_rx_speed100_{-1};
+  int last_rx_fg_{-1};
+  int last_rx_bg_{-1};
   // Pattern push state. `pattern_tx_slot_` < 0 means "nothing to send".
   uint32_t pattern_delay_ms_{30000};
   uint32_t pattern_repeat_ms_{300000};
