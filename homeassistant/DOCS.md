@@ -71,6 +71,7 @@ the page's, because it picks what this panel acts on.
 | **Transition** | How long a sweep takes, and how long a mode takes to fade in. The 35 s choreography window itself is fixed. |
 | **Mode speed** | Choreography rate, ×1 is the base. |
 | **Colours** | The hands and the background, live. Both are on the wire, so one change reaches all 24 clocks — and both are ordinary `text` entities, so an automation can warm the wall at sunset |
+| **Reset look to firmware** | Discards the saved look — movement, sweep length, speed, colours, cycle list, interval — and goes back to what `panel.yaml` compiled in. Everything except the mode is saved to flash ten seconds after you change it, so the wall survives a power cut; the price is that flash then wins over the YAML, and this is the way back |
 | **Reload patterns from firmware** | Throws away everything written from Home Assistant and goes back to the `patterns/` folder as compiled in. The way out of a bad edit. |
 
 Movement, Transition, Mode speed and the two colours are set on the **master** and broadcast to

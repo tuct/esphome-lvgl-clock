@@ -8,6 +8,7 @@
 #ifdef USE_LVGL_CLOCK_SYNC
 
 #include "esphome/core/component.h"
+#include "esphome/core/preferences.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/uart/uart.h"
 #ifdef USE_SENSOR
@@ -48,6 +49,25 @@ namespace lvgl_clock {
 // minute, not just the second, or one clock flips its digit up to a second
 // after its neighbours - which on a wall of 24 reads as a fault, not drift.
 // So this sets the clock itself, with the millisecond field.
+// What the master remembers across a reboot.
+//
+// Patterns already survive one (pattern_store), and losing the rest on a power
+// cut is the same annoyance: the wall comes back at compile-time white-on-black
+// at x1.0 and every automation that ever set it has already run.
+//
+// Fixed-size POD, packed, with its own hash - NVS stores it as one blob, so a
+// field added later must be APPENDED and the hash bumped, exactly like the
+// wire format.
+struct WallPrefs {
+  uint8_t movement;
+  uint16_t trans_ms;
+  uint16_t speed100;
+  uint32_t fg_rgb;
+  uint32_t bg_rgb;
+  uint32_t cycle_interval_s;
+  char cycle_modes[128];
+} __attribute__((packed));
+
 class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
  public:
   void setup() override;
@@ -161,6 +181,27 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   int last_rx_movement_{-1};
   int last_rx_trans_ms_{-1};
   int last_rx_speed100_{-1};
+  // Saved look and feel. `defaults_` is what the YAML compiled in, captured
+  // before flash is read, so there is a way back - the same role `Reload
+  // patterns from firmware` plays for patterns.
+  ESPPreferenceObject wall_pref_;
+  WallPrefs saved_{};
+  WallPrefs defaults_{};
+  bool wall_prefs_ready_{false};
+  uint32_t wall_prefs_dirty_ms_{0};
+ public:
+  // Throw away the saved look and go back to what the YAML compiled in. The
+  // counterpart of `Reload patterns from firmware`, and needed for the same
+  // reason: once flash wins, editing panel.yaml and reflashing does nothing
+  // visible, which is a deeply confusing way to lose an afternoon.
+  void reset_wall_prefs_to_firmware();
+
+ protected:
+  void load_wall_prefs_();
+  void apply_wall_prefs_(const WallPrefs &p);
+  WallPrefs current_wall_prefs_();
+  void maybe_save_wall_prefs_();
+
   int last_rx_fg_{-1};
   int last_rx_bg_{-1};
   // Pattern push state. `pattern_tx_slot_` < 0 means "nothing to send".

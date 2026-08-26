@@ -30,6 +30,8 @@
   if (q.get("cycle")) cfg.cycle = q.get("cycle").split(",").map(s => s.trim()).filter(Boolean);
 
   let mirror = q.get("mirror") === "1";
+  // Which look the saved display pinned - those win over the wall's.
+  const custom = {};
   let boardId = q.get("board") || null;
   let title = "";
 
@@ -46,9 +48,16 @@
     cfg.digit_gap = d.digit_gap;
     cfg.hand_color = d.hand_color;
     cfg.background = d.background;
+    custom.hand_color = true;
+    custom.background = true;
     cfg.face_color = d.face_color;
     cfg.show_face = d.show_face;
     if (d.cycle) cfg.cycle = d.cycle.split(",").map(s => s.trim()).filter(Boolean);
+    if (d.mode_speed) cfg.mode_speed = d.mode_speed;
+    if (d.transition) cfg.transition = d.transition;
+    if (d.movement) cfg.movement = d.movement;
+    if (d.window) cfg.window = d.window;
+    cfg.return_to_time = d.return_to_time !== false;
     // The page behind the card has to match, or a non-black display shows a
     // black border wherever the 8:3 wall does not reach the screen edge.
     document.documentElement.style.background = d.background;
@@ -62,14 +71,10 @@
   let card = null;
   let shown = "";               // what the card is currently configured to show
 
-  function mount(extra) {
-    const next = Object.assign({}, cfg, extra || {});
-    const key = JSON.stringify(next);
-    if (key === shown) return;
-    shown = key;
-    if (card) card.remove();
+  function mount() {
+    if (card) return;
     card = document.createElement("clockclock24-card");
-    card.setConfig(next);
+    card.setConfig(cfg);
     host.appendChild(card);
   }
 
@@ -87,15 +92,23 @@
       if (!b) { note.textContent = "No wall found — running on its own."; return; }
 
       const mode = b.controls.mode && b.controls.mode.state;
+      // A mirroring display follows the wall's colours too, unless the saved
+      // display set its own.
+      const hand = custom.hand_color ? null : (b.controls.hand_color || {}).state;
+      const back = custom.background ? null : (b.controls.bg_color || {}).state;
       const slotNo = b.controls.pattern_slot && Number(b.controls.pattern_slot.state);
       const slot = slotNo ? b.slots[slotNo - 1] : null;
       note.textContent = (title ? title + " · " : "") + `${b.device} · ${mode || "?"}`;
 
       if (!mode) return;
-      if (mode === "pattern" && slot && slot.state)
-        mount({ mode: "pattern", pattern: slot.state });
-      else if (mode !== "pattern")
-        mount({ mode, pattern: null });
+      // setMode, NOT a rebuild. Recreating the card threw away where every
+      // hand was, so the wall snapped to the new card's starting pose and only
+      // then swept to the time - which is exactly what "it cannot jump" is
+      // there to prevent. The card blends into a mode and settles out of one
+      // by itself, given the chance.
+      if (mode === "pattern" && slot && slot.state) card.setMode("pattern", slot.state);
+      else if (mode !== "pattern") card.setMode(mode);
+      if (hand || back) card.setColors(hand, back);
     } catch (err) {
       note.textContent = "Home Assistant unreachable — running on its own.";
     }

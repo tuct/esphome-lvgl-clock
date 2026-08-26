@@ -258,6 +258,11 @@ class LvglClock : public Component, public lvgl::LvCompound {
       return;
     this->background_ = c;
     this->cc_dirty_ = true;
+    // With `direct_draw`, the background is NOT ours - LVGL paints it from the
+    // object's style, and that style was set once when the draw callback was
+    // attached. Redrawing the hands leaves it exactly as it was, which is why
+    // the hands followed a colour change and the background did not.
+    this->bg_style_dirty_ = true;
   }
   Color get_foreground() const { return this->fg_; }
   Color get_background() const { return this->background_; }
@@ -893,6 +898,8 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // the full render_interval - which is what makes a C3 look "slow".
   // Starts true so the parked hands get drawn once at boot.
   bool cc_dirty_{true};
+  // The LVGL style behind a direct-draw widget needs re-applying, not redrawing.
+  bool bg_style_dirty_{true};
   uint32_t anim_start_{0};
   uint32_t startup_align_ms_{0};
   bool startup_aligned_{false};

@@ -192,17 +192,10 @@
 
     // Cycle list
     $("f-cycle").classList.toggle("hidden", !c.cycle_modes);
-    if (c.cycle_modes && !editing) {
-      const list = (c.cycle_modes.state || "").split(",").map(s => s.trim()).filter(Boolean);
-      const now = c.mode ? c.mode.state : null;
-      $("cycletags").innerHTML = list.length
-        ? list.map((m, i) => `<span class="tag${m === now ? " now" : ""}">` +
-            `<span class="i">${i + 1}</span>${esc(pretty(m))}</span>`).join("")
-        : `<span class="hint">empty — the wall stays on one mode</span>`;
-      $("cycleinput").value = list.join(",");
-    }
+    if (c.cycle_modes && !editing && !(cycleChips && cycleChips.dragging())) syncCycle(c);
 
-    $("reload").classList.toggle("hidden", !c.reload);
+    $("reload").classList.toggle("hidden", !c.reload_patterns);
+    $("resetlook").classList.toggle("hidden", !c.reset_look);
     // Only when a sensor is there AND has a reading. `unknown` and
     // `unavailable` are states too, and "Room Temperature: unknown" is worse
     // than showing nothing.
@@ -239,22 +232,31 @@
     const slotNo = c.pattern_slot ? Number(c.pattern_slot.state) : 0;
     const slot = slotNo ? board.slots.find(s => s.slot === slotNo) : null;
     const pattern = mode === "pattern" && slot && slot.state ? slot.state : null;
-    const key = mode + "|" + (pattern || "");
-    if (key === previewKey && preview) return;
+    const hand = (c.hand_color && c.hand_color.state) || "#ffffff";
+    const back = (c.bg_color && c.bg_color.state) || "#000000";
+
+    if (!preview) {
+      // Built once. Rebuilding it to change mode or colour would restart the
+      // animation from the card's starting pose - a jump, in a preview of a
+      // thing whose whole point is that it never jumps.
+      const cfg = { type: "custom:clockclock24-card", mode: "time", digit_gap: 0,
+                    hand_color: hand, background: back };
+      preview = document.createElement("clockclock24-card");
+      try { preview.setConfig(cfg); }
+      catch (err) { preview = null; return; }
+      $("preview").classList.remove("empty");
+      $("preview").appendChild(preview);
+      previewKey = "";
+    }
+    const key = [mode, pattern || "", hand, back].join("|");
+    if (key === previewKey) return;
     previewKey = key;
 
-    const cfg = { type: "custom:clockclock24-card", mode, digit_gap: 0 };
-    if (pattern) cfg.pattern = pattern;
-    // `pattern` with an empty slot has nothing to draw; the card throws rather
-    // than showing a blank, so fall back to the clock.
-    if (mode === "pattern" && !pattern) cfg.mode = "time";
-    const next = document.createElement("clockclock24-card");
-    try { next.setConfig(cfg); }
-    catch (err) { previewKey = ""; return; }
-    if (preview) preview.remove();
-    preview = next;
-    $("preview").classList.remove("empty");
-    $("preview").appendChild(preview);
+    preview.setColors(hand, back);
+    // `pattern` with an empty slot has nothing to draw - show the clock.
+    if (mode === "pattern" && !pattern) preview.setMode("time");
+    else if (mode === "pattern") preview.setMode("pattern", pattern);
+    else preview.setMode(mode);
   }
 
   function mountEditor() {
@@ -308,10 +310,115 @@
   $("slot").onchange = mountEditor;
   $("pname").onchange = mountEditor;
 
-  $("cycleedit").onclick = () => {
-    editing = true;
-    $("cycleeditrow").classList.remove("hidden");
-    $("cycleinput").focus();
+  // ---- cycle list --------------------------------------------------------
+  // A list you can drag, not a comma-separated string you have to retype. The
+  // string is still the truth - the master parses it and republishes what it
+  // accepted - but nobody should have to edit it by hand to move `wind` one
+  // place left.
+  let cycle = [];
+
+  function syncCycle(c) {
+    cycle = (c.cycle_modes.state || "").split(",").map(s => s.trim()).filter(Boolean);
+    $("cycleinput").value = cycle.join(",");
+    // What you can add: every mode the wall knows, plus the patterns that have
+    // something in them - a cycle list takes either.
+    const modes = c.mode ? c.mode.options : [];
+    const named = board.slots
+      .filter(s => s.state)
+      .map(s => s.state.split(":")[0])
+      .filter(n => n && !modes.includes(n));
+    const keep = $("cycleadd").value;
+    $("cycleadd").innerHTML =
+      modes.map(m => `<option value="${esc(m)}">${esc(pretty(m))}</option>`).join("") +
+      (named.length ? `<optgroup label="patterns">` + named.map(n =>
+        `<option value="${esc(n)}">${esc(n)}</option>`).join("") + `</optgroup>` : "");
+    if ([...modes, ...named].includes(keep)) $("cycleadd").value = keep;
+    drawCycle();
+  }
+
+  // A draggable list of chips, shared by the wall's cycle list and each
+  // display's. `get`/`set` are the only things that differ - one writes to an
+  // entity, the other to a saved display.
+  //
+  // Pointer events, not HTML5 drag-and-drop: this add-on gets opened on the
+  // tablet it drives, and dragstart never fires from a finger.
+  function chipList(host, opts) {
+    const state = { drag: null };
+    const api = { draw, dragging: () => state.drag !== null };
+    function draw() {
+      const list = opts.get();
+      host.innerHTML = list.length
+        ? list.map((m, i) =>
+            `<span class="tag${m === api.now ? " now" : ""}${i === state.drag ? " dragging" : ""}"` +
+            ` data-i="${i}"><span class="i">${i + 1}</span>${esc(pretty(m))}` +
+            `<button class="x" title="Remove" aria-label="Remove ${esc(m)}">&times;</button></span>`).join("")
+        : `<span class="tag empty">${esc(opts.empty)}</span>`;
+      host.querySelectorAll(".tag[data-i]").forEach(el => {
+        const i = Number(el.dataset.i);
+        el.querySelector(".x").onclick = (e) => {
+          e.stopPropagation();
+          const l = opts.get(); l.splice(i, 1); opts.set(l); draw();
+        };
+        el.onpointerdown = (e) => {
+          if (e.target.classList.contains("x")) return;
+          state.drag = i; el.setPointerCapture(e.pointerId); draw();
+        };
+        el.onpointermove = (e) => {
+          if (state.drag === null) return;
+          const over = document.elementFromPoint(e.clientX, e.clientY);
+          const tag = over && over.closest ? over.closest(".tag[data-i]") : null;
+          if (!tag) return;
+          const j = Number(tag.dataset.i);
+          if (j === state.drag) return;
+          const l = opts.get();
+          l.splice(j, 0, l.splice(state.drag, 1)[0]);
+          state.drag = j; opts.set(l, true); draw();
+        };
+        const end = () => {
+          if (state.drag === null) return;
+          state.drag = null; draw(); opts.set(opts.get());
+        };
+        el.onpointerup = end;
+        el.onpointercancel = end;
+      });
+    }
+    return api;
+  }
+
+  let cycleChips = null;
+  function drawCycle() {
+    if (!cycleChips) {
+      cycleChips = chipList($("cycletags"), {
+        get: () => cycle,
+        set: (l, quiet) => { cycle = l; if (!quiet) commitCycle(); },
+        empty: "empty — the wall stays on whatever Mode says",
+      });
+    }
+    cycleChips.now = board && board.controls.mode ? board.controls.mode.state : null;
+    cycleChips.draw();
+  }
+
+  async function commitCycle() {
+    const c = board.controls.cycle_modes;
+    try { await call("text", "set_value", { entity_id: c.entity_id, value: cycle.join(",") }); }
+    catch (err) { setLive("err", `<b>Failed.</b> ${esc(err.message)}`); }
+    // The master drops names it does not know and republishes what it kept, so
+    // what comes back is the answer - not what was sent.
+    setTimeout(refresh, 400);
+  }
+
+  $("cycleaddbtn").onclick = () => {
+    const v = $("cycleadd").value;
+    if (!v) return;
+    cycle.push(v);          // repeats are meaningful, so no de-duplication
+    drawCycle();
+    commitCycle();
+  };
+
+  $("cycletext").onclick = () => {
+    editing = !editing;
+    $("cycleeditrow").classList.toggle("hidden", editing === false);
+    if (editing) $("cycleinput").focus();
   };
   $("cyclecancel").onclick = () => {
     editing = false;
@@ -330,14 +437,22 @@
     // what comes back is the answer - not what was typed.
     setTimeout(refresh, 400);
   };
-  $("reload").onclick = async () => {
-    const c = board.controls.reload;
-    if (!confirm("Discard patterns written from Home Assistant and go back to " +
-                 "the patterns/ folder as compiled in?")) return;
-    try { await call("button", "press", { entity_id: c.entity_id }); }
-    catch (err) { setLive("err", `<b>Failed.</b> ${esc(err.message)}`); }
-    setTimeout(refresh, 600);
+  // Both of these throw work away, so both ask first.
+  const pressButton = (id, role, question) => {
+    $(id).onclick = async () => {
+      const c = board.controls[role];
+      if (!c || !confirm(question)) return;
+      try { await call("button", "press", { entity_id: c.entity_id }); }
+      catch (err) { setLive("err", `<b>Failed.</b> ${esc(err.message)}`); }
+      setTimeout(refresh, 900);
+    };
   };
+  pressButton("reload", "reload_patterns",
+    "Discard patterns written from Home Assistant and go back to the " +
+    "patterns/ folder as compiled in?");
+  pressButton("resetlook", "reset_look",
+    "Discard the saved movement, sweep length, speed, colours, cycle list and " +
+    "interval, and go back to what the firmware was compiled with?");
 
   // The Mode select on the master republishes every second, so the wall moving
   // itself on shows up here without anyone touching anything.
@@ -405,9 +520,32 @@
             <input type="number" data-k="cycle_interval" min="5" max="3600" value="${d.cycle_interval}"></label>
           <label><span>Digit gap</span>
             <input type="number" data-k="digit_gap" min="0" max="2" step="0.05" value="${d.digit_gap}"></label>
+          <label><span>Mode speed (×)</span>
+            <input type="number" data-k="mode_speed" min="0.1" max="5" step="0.1" value="${d.mode_speed}"></label>
+          <label><span>Transition (s)</span>
+            <input type="number" data-k="transition_s" min="0.2" max="60" step="0.1"
+                   value="${(d.transition / 1000).toFixed(1)}"></label>
+          <label><span>Window (s)</span>
+            <input type="number" data-k="window" min="2" max="3600" value="${d.window}"></label>
+          <label><span>Movement</span>
+            <select data-k="movement">
+              ${["opposite","clockwise","counter","long"].map(m =>
+                `<option value="${m}"${m === d.movement ? " selected" : ""}>${esc(m)}</option>`).join("")}
+            </select></label>
+        </div>
+        <div class="dcycle">
+          <div class="flabel">Cycle list<span class="fnote">drag to reorder — empty uses the card's own six</span></div>
+          <div class="taglist" data-cycle="${n}"></div>
+          <div class="addrow">
+            <div class="selwrap"><select data-cycleadd="${n}">${MODE_CHOICES
+              .filter(m => m !== "cycle")
+              .map(m => `<option value="${m}">${esc(pretty(m))}</option>`).join("")}</select></div>
+            <button class="ghost small" data-cycleaddbtn="${n}">Add</button>
+          </div>
         </div>
         <div class="swatches">
           <label><input type="checkbox" data-k="mirror"${d.mirror ? " checked" : ""}> Follow the wall's mode</label>
+          <label><input type="checkbox" data-k="return_to_time"${d.return_to_time ? " checked" : ""}> Back to the time between windows</label>
           <label><input type="color" data-k="hand_color" value="${esc(d.hand_color)}"> Hands</label>
           <label><input type="color" data-k="background" value="${esc(d.background)}"> Background</label>
           <label><input type="checkbox" data-k="show_face"${d.show_face ? " checked" : ""}> Faces</label>
@@ -420,11 +558,35 @@
       el.querySelectorAll("[data-k]").forEach(inp => {
         inp.onchange = () => {
           const k = inp.dataset.k;
-          displays[n][k] = inp.type === "checkbox" ? inp.checked
-                         : inp.type === "number" ? Number(inp.value) : inp.value;
+          const v = inp.type === "checkbox" ? inp.checked
+                  : inp.type === "number" ? Number(inp.value) : inp.value;
+          // Seconds in the box, milliseconds in the config - the card takes ms
+          // and nobody thinks about a sweep in milliseconds.
+          if (k === "transition_s") displays[n].transition = Math.round(v * 1000);
+          else displays[n][k] = v;
           saveDisplays();
         };
       });
+
+      // Each display gets the same draggable cycle list as the wall.
+      const tags = el.querySelector(`[data-cycle="${n}"]`);
+      const chips = chipList(tags, {
+        get: () => (displays[n].cycle || "").split(",").map(s => s.trim()).filter(Boolean),
+        set: (l, quiet) => {
+          displays[n].cycle = l.join(",");
+          if (!quiet) saveDisplays();
+        },
+        empty: "empty — the card cycles its own six",
+      });
+      chips.draw();
+      el.querySelector(`[data-cycleaddbtn="${n}"]`).onclick = () => {
+        const v = el.querySelector(`[data-cycleadd="${n}"]`).value;
+        const l = (displays[n].cycle || "").split(",").map(s => s.trim()).filter(Boolean);
+        l.push(v);                    // repeats are meaningful here too
+        displays[n].cycle = l.join(",");
+        chips.draw();
+        saveDisplays();
+      };
       el.querySelector('[data-act="del"]').onclick = () => {
         if (!confirm(`Remove "${displays[n].name}"? Any tablet pointed at it will stop working.`)) return;
         displays.splice(n, 1);
@@ -456,6 +618,8 @@
       id: "d" + Date.now().toString(36), name: "Display " + n,
       board: board ? board.device_id : "", mirror: true, mode: "cycle",
       cycle: "", cycle_interval: 120, digit_gap: 0,
+      mode_speed: 1, transition: 5000,
+      movement: "opposite", window: 35, return_to_time: true,
       hand_color: "#ffffff", background: "#000000",
       face_color: "#1f1f23", show_face: false,
     });

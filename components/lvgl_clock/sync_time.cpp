@@ -47,13 +47,110 @@ void SyncTime::reload_patterns_from_firmware() {
   ESP_LOGI(TAG, "Patterns reloaded from firmware");
 }
 
+// Bumped whenever WallPrefs changes shape - an old blob read as a new struct
+// is worse than no blob at all.
+static const uint32_t WALL_PREF_HASH = 0x1C24C01Au;
+// NVS has a finite erase count and a colour picker fires while you drag it, so
+// a change is held before it is written.
+static const uint32_t WALL_PREF_SETTLE_MS = 10000;
+
+WallPrefs SyncTime::current_wall_prefs_() {
+  WallPrefs p{};
+  LvglClock *c = this->primary_clock_();
+  if (c == nullptr)
+    return p;
+  p.movement = (uint8_t) c->get_movement();
+  p.trans_ms = (uint16_t) c->get_transition_length();
+  p.speed100 = (uint16_t) lroundf(c->get_mode_speed() * 100.0f);
+  p.fg_rgb = c->get_foreground_rgb();
+  p.bg_rgb = c->get_background_rgb();
+  p.cycle_interval_s = c->get_cycle_interval();
+  std::string modes = c->get_cycle_modes_text();
+  strncpy(p.cycle_modes, modes.c_str(), sizeof(p.cycle_modes) - 1);
+  return p;
+}
+
+void SyncTime::apply_wall_prefs_(const WallPrefs &p) {
+  LvglClock *c = this->primary_clock_();
+  if (c == nullptr)
+    return;
+  // Range-checked, because a blob written by a different firmware version is
+  // just bytes. Anything out of range keeps the compiled-in value.
+  if (p.movement <= (uint8_t) CC_MOVE_LONG)
+    c->set_movement((MovementMode) p.movement);
+  if (p.trans_ms > 0 && p.trans_ms <= 60000)
+    c->set_transition_length(p.trans_ms);
+  if (p.speed100 >= 10 && p.speed100 <= 500)
+    c->set_mode_speed(p.speed100 / 100.0f);
+  if (p.fg_rgb <= 0xFFFFFFu)
+    c->set_foreground_rgb(p.fg_rgb);
+  if (p.bg_rgb <= 0xFFFFFFu)
+    c->set_background_rgb(p.bg_rgb);
+  if (p.cycle_interval_s <= 24u * 3600u)
+    c->set_cycle_interval(p.cycle_interval_s);
+  if (p.cycle_modes[0] != '\0') {
+    std::string modes(p.cycle_modes, strnlen(p.cycle_modes, sizeof(p.cycle_modes)));
+    c->set_cycle_modes_text(modes);
+  }
+}
+
+void SyncTime::load_wall_prefs_() {
+  // Capture what the YAML compiled in BEFORE flash overwrites it.
+  this->defaults_ = this->current_wall_prefs_();
+  this->wall_pref_ = global_preferences->make_preference<WallPrefs>(WALL_PREF_HASH);
+  WallPrefs blob{};
+  if (this->wall_pref_.load(&blob)) {
+    this->apply_wall_prefs_(blob);
+    ESP_LOGCONFIG(TAG, "Look restored from flash: movement %s, %u ms, x%.2f, #%06x on #%06x",
+                  movement_name((MovementMode) blob.movement), (unsigned) blob.trans_ms,
+                  blob.speed100 / 100.0f, (unsigned) blob.fg_rgb, (unsigned) blob.bg_rgb);
+  }
+  this->saved_ = this->current_wall_prefs_();
+  this->wall_prefs_ready_ = true;
+}
+
+void SyncTime::maybe_save_wall_prefs_() {
+  if (!this->wall_prefs_ready_)
+    return;
+  WallPrefs now = this->current_wall_prefs_();
+  if (memcmp(&now, &this->saved_, sizeof(WallPrefs)) == 0) {
+    this->wall_prefs_dirty_ms_ = 0;
+    return;
+  }
+  uint32_t ms = millis();
+  if (this->wall_prefs_dirty_ms_ == 0) {
+    this->wall_prefs_dirty_ms_ = ms;
+    return;                                   // start the settle timer
+  }
+  if (ms - this->wall_prefs_dirty_ms_ < WALL_PREF_SETTLE_MS)
+    return;
+  this->wall_prefs_dirty_ms_ = 0;
+  this->saved_ = now;
+  if (this->wall_pref_.save(&now))
+    ESP_LOGI(TAG, "Look saved: movement %s, %u ms, x%.2f, #%06x on #%06x",
+             movement_name((MovementMode) now.movement), (unsigned) now.trans_ms,
+             now.speed100 / 100.0f, (unsigned) now.fg_rgb, (unsigned) now.bg_rgb);
+  else
+    ESP_LOGW(TAG, "Could not save the wall's look to flash");
+}
+
+void SyncTime::reset_wall_prefs_to_firmware() {
+  this->apply_wall_prefs_(this->defaults_);
+  this->saved_ = this->current_wall_prefs_();
+  this->wall_pref_.save(&this->saved_);
+  ESP_LOGI(TAG, "Look reset to the compiled-in defaults");
+}
+
 void SyncTime::setup() {
   ESP_LOGCONFIG(TAG, "Setting up %s time sync...", this->broadcast_ ? "master" : "slave");
   // Flash wins over the compiled-in folder: a pattern edited from Home
   // Assistant should survive a reboot, and the folder is the starting point
   // rather than the authority. `reload` is how you get back to it.
-  if (this->broadcast_)
+  if (this->broadcast_) {
     pattern_store().load();
+    // After the widgets exist, so `defaults_` is what codegen actually set.
+    this->load_wall_prefs_();
+  }
   if (this->broadcast_ && pattern_store().count() > 0) {
     this->pattern_next_ms_ = millis() + this->pattern_delay_ms_;
     ESP_LOGCONFIG(TAG, "%d pattern(s) loaded, first push in %.0f s, repeating every %.0f s",
@@ -143,6 +240,9 @@ void SyncTime::update() {
   // warm the whole wall at sunset instead of eight.
   int fg_rgb = primary != nullptr ? (int) primary->get_foreground_rgb() : 0xFFFFFF;
   int bg_rgb = primary != nullptr ? (int) primary->get_background_rgb() : 0x000000;
+  // Once a second, which is often enough for a settle timer and rare enough to
+  // cost nothing.
+  this->maybe_save_wall_prefs_();
   for (size_t i = 1; i < this->clocks_.size(); i++) {
     this->clocks_[i]->set_movement((MovementMode) movement);
     this->clocks_[i]->set_transition_length((uint32_t) trans_ms);

@@ -1464,6 +1464,13 @@ void LvglClock::apply_mode_(ClockMode m) {
       this->blend_off_[i] = this->cur_[i];
     this->blend_state_ = BLEND_PENDING;
     this->animating_ = false;  // a digit sweep in flight is superseded
+  } else if (m == CC_MODE_TIME && this->settle_from_ != CC_MODE_TIME) {
+    // Settling out of a choreography: KEEP the entry blend. A mode can be left
+    // before it has finished fading in - a short window, or two mode changes in
+    // quick succession - and cur_[] currently carries whatever offset is still
+    // outstanding. Clearing it makes the next frame draw the raw choreography
+    // instead, which is a jump of exactly that offset. Measured at up to 180
+    // degrees in the JS port, which is this code line for line.
   } else {
     this->blend_state_ = BLEND_NONE;
   }
@@ -1756,6 +1763,9 @@ void LvglClock::loop() {
           // hand's remaining distance to the time away on top of it, rather
           // than freezing the animation and sweeping from a still pose.
           this->tick_choreography_(this->settle_from_, choreo_t);
+          // Before the settle, so an unfinished entry blend keeps fading on
+          // top of the choreography rather than disappearing between frames.
+          this->blend_into_mode_();
           if (this->settle_blend_()) {
             for (int i = 0; i < NUM_HANDS; i++)
               this->cur_[i] = wrap360(this->target_[i]);
@@ -1811,7 +1821,20 @@ void LvglClock::loop() {
       }
       lv_obj_set_style_border_width(this->obj, 0, 0);
       lv_obj_set_style_pad_all(this->obj, 0, 0);
+      this->bg_style_dirty_ = false;
       ESP_LOGD(TAG, "Direct draw: no canvas, drawing into LVGL's buffer");
+    }
+    // Re-apply it whenever the colour changes. Done here rather than in the
+    // setter because this is already the LVGL context - the setter is called
+    // from the sync-bus RX path, which is not somewhere to be touching styles.
+    if (this->bg_style_dirty_) {
+      this->bg_style_dirty_ = false;
+      if (!this->transparent_) {
+        lv_obj_set_style_bg_color(
+            this->obj, lv_color_make(this->background_.r, this->background_.g, this->background_.b),
+            0);
+        lv_obj_set_style_bg_opa(this->obj, LV_OPA_COVER, 0);
+      }
     }
     lv_obj_invalidate(this->obj);
     return;

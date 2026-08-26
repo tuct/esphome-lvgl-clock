@@ -190,21 +190,32 @@ main { max-width: 74rem; margin: 0 auto; padding: 22px; display: grid; gap: 18px
 }
 
 /* ---- cycle list -------------------------------------------------------- */
-.cyclerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.taglist { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; min-width: 12rem; }
+.taglist { display: flex; flex-wrap: wrap; gap: 6px; min-height: 2rem;
+           align-items: center; }
 .tag {
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
-  padding: 3px 9px; font-size: 12.5px; color: var(--ink-dim);
-  font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px;
+  padding: 4px 5px 4px 9px; font-size: 12.5px; color: var(--ink);
+  font-variant-numeric: tabular-nums; cursor: grab; user-select: none;
+  touch-action: none;   /* or the browser scrolls instead of letting us drag */
 }
-.tag .i { color: var(--ink-faint); margin-right: 5px; font-size: 11px; }
-.tag.now { border-color: var(--accent); color: var(--ink); }
+.tag:active { cursor: grabbing; }
+.tag .i { color: var(--ink-faint); font-size: 11px; }
+.tag.now { border-color: var(--accent); }
+.tag.dragging { opacity: .5; border-style: dashed; }
+.tag .x {
+  border: 0; background: none; color: var(--ink-faint); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 0 3px; border-radius: 4px;
+}
+.tag .x:hover { color: var(--warn); background: var(--line-soft); }
+.tag.empty { opacity: .6; font-style: italic; cursor: default; padding: 4px 9px; }
+
+.addrow { display: flex; gap: 8px; align-items: center; margin-top: 10px;
+          flex-wrap: wrap; }
+.addrow .spacer { flex: 1; }
+.addrow select { min-width: 12rem; }
 .editrow { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .editrow input { flex: 1; min-width: 14rem; }
-
-.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px;
-        flex-wrap: wrap; padding: 13px 18px; background: var(--panel-2);
-        border-radius: 0 0 var(--radius) var(--radius); border-top: 1px solid var(--line-soft); }
 
 /* ---- editor ------------------------------------------------------------ */
 /* Pinned dark in BOTH themes. The editor draws the wall, which is black, and
@@ -255,6 +266,9 @@ pre { background: var(--panel-2); border: 1px solid var(--line-soft);
 .display .grid label { display: flex; flex-direction: column; gap: 5px; align-items: stretch; }
 .display .grid label span { color: var(--ink-faint); font-size: 11.5px; }
 .display .grid input, .display .grid select { width: 100%; }
+.display .dcycle { margin-top: 12px; padding-top: 12px;
+                   border-top: 1px dashed var(--line-soft); }
+.display .dcycle .flabel { margin-bottom: 8px; }
 .display .swatches { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px;
   padding-top: 12px; border-top: 1px dashed var(--line-soft); }
 .display .swatches label { display: flex; gap: 7px; align-items: center;

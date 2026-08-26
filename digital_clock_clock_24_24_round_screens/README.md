@@ -364,26 +364,52 @@ esphome run board_a.yaml      # …and the other seven, over USB
 so you can move the USB lead. macOS and Linux:
 
 ```bash
-./flash-all.sh                    # all eight
+./flash-all.sh                    # all eight, over USB, in order
 ./flash-all.sh -b a,b,c           # some of them
+./flash-all.sh -b a,b,c,e,f,g,h,d # listeners first, master last
 ./flash-all.sh -p /dev/cu.usbmodem1101   # skip the port prompt
 ./flash-all.sh --build-only       # check a change compiles for all eight
+./flash-all.sh -m cc24-board-d.local     # master over the network, not USB
 ```
 
-It names each board's column and clock indices as it goes, and does two things
-on purpose:
+Before each board it draws the wall **as you are looking at it — from behind,
+where the USB sockets are, so board A is on the right** — with that board's
+column picked out:
 
-- **Compiles all eight before uploading anything.** A compile error found
-  halfway through leaves you with a wall running two firmwares and a board in
-  your hand.
-- **Flashes the listeners first and the master last.** The mode is an integer on
-  the sync bus and new modes are *appended*, so a newer master can broadcast a
-  mode an older listener does not know — and that listener silently ignores the
-  mode field and holds its last animation. The other way round is harmless: an
-  older master only ever sends modes a newer listener already understands.
+<img src="./images/flash-all-wall-map.png" width="90%">
 
-Only board D has `ota:`, so the seven listeners are flashed over USB. That is
-the deliberate trade for having no Wi-Fi stack on them — see below.
+Columns are **zero-based**. Board D above is *column 3* and the *fourth* one
+along — so "column 4" counted the natural way lands on D when it means E. That
+mismatch is the whole reason the picture is there: the highlighted block is
+unambiguous in a way the number is not.
+
+It also **compiles all eight before uploading anything**. A compile error found
+halfway through leaves you with a wall running two firmwares and a board in
+your hand.
+
+### When the flashing order matters
+
+It does not, if the wall is powered down or the modules are out of their
+carriers — which is the normal case, and why the default order is simply
+`a,b,c,d,e,f,g,h`.
+
+It does if you are updating a wall that **stays running** while you work
+through it. The mode is an integer on the sync bus and new modes are
+*appended*, so a newer master can broadcast a mode an older listener does not
+know — and that listener silently ignores the mode field and holds its last
+animation. The other way round is harmless: an older master only ever sends
+modes a newer listener already understands. So for a live wall, put the master
+last:
+
+```bash
+./flash-all.sh -b a,b,c,e,f,g,h,d
+```
+
+The script says so itself when the master is not last.
+
+Only board D has `ota:`, so by default everything goes over USB. Give it
+`-m cc24-board-d.local` and the master goes over the network instead — useful
+once the wall is mounted and D is the only board you can still reach.
 
 Each board gets its own hostname and build directory, so the eight builds don't
 collide.
@@ -517,9 +543,29 @@ runtime is one of its entities:
 | `text.…_cycle_modes` | The rotation, in order — repeats count |
 | `text.…_pattern_1` … | The pattern slots, read **and** write |
 | `button.…_reload_patterns_from_firmware` | Back to the `patterns/` folder as compiled in |
+| `button.…_reset_look_to_firmware` | Back to the look `panel.yaml` compiled in — see below |
 
 All of it reaches the other seven boards over the bus. Nothing is recompiled
 and nothing is reflashed.
+
+#### It survives a restart
+
+Movement, sweep length, speed, both colours, the cycle list and its interval
+are written to flash about **ten seconds** after you change them — held that
+long because NVS has a finite erase count and a colour picker fires all the way
+round the wheel. The wall comes back the way you left it after a power cut,
+exactly as patterns already did.
+
+Which has a consequence worth knowing: **flash now wins over `panel.yaml`.**
+Edit `mode_speed` there, reflash, and nothing visible happens, because the
+saved value is applied over it at boot. `Reset look to firmware` is the way
+back — the same role `Reload patterns from firmware` plays for patterns. The
+compiled-in values are captured at startup *before* flash is read, so the
+button always has something true to restore.
+
+The mode itself is deliberately **not** saved: the wall should come back
+telling the time, not stuck in whatever choreography was running when the power
+went.
 
 `board_d.yaml` also declares a project marker, which is how anything looking
 for the wall finds it rather than guessing at entity names:

@@ -413,6 +413,18 @@ button:
     on_press:
       - lambda: 'id(sync_out).reload_patterns_from_firmware();'
 
+  # Movement, sweep length, speed, both colours, the cycle list and its
+  # interval are SAVED TO FLASH about ten seconds after you change them, so the
+  # wall comes back the way you left it after a power cut.
+  #
+  # Which means flash now wins over panel.yaml: edit `mode_speed` there,
+  # reflash, and nothing visible happens. This is the way back - the same role
+  # the button above plays for patterns.
+  - platform: template
+    name: "Reset look to firmware"
+    on_press:
+      - lambda: 'id(sync_out).reset_wall_prefs_to_firmware();'
+
 # Stand-in temperature for `mode: temp` until a real sensor is wired up. It
 # walks 18->24 C and back so the digits actually change while you watch. Swap
 # the platform for a real one (dht, bme280, homeassistant, ...) and keep the id.

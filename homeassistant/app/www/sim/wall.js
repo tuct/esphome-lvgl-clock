@@ -71,7 +71,12 @@
     settleToTime(nowMs) {
       this.settleFrom = this.mode;
       this.mode = "time";
-      this.blendState = BLEND_NONE;
+      // The entry blend is deliberately NOT cancelled. A mode can be left
+      // before it has finished fading in - a short window, or two mode changes
+      // in quick succession - and cur[] currently includes whatever offset is
+      // still outstanding. Dropping it makes the very next frame render the
+      // raw choreography instead: a jump of exactly that offset, up to 180
+      // degrees, which is measurable and was happening.
       for (let d = 0; d < NUM_DIGITS; d++) {
         const val = this.digits[d];
         const blank = val < 0 || val > 9;
@@ -208,14 +213,22 @@
       // the blend chases a STILL target. Without this every hand fades toward
       // a moving pose and the wall never starts uniform — which is exactly the
       // "wind doesn't start with all hands in the same place" bug.
-      if (this.blendState === BLEND_NONE) this.animT += dtS;
+      //
+      // Once we are settling OUT of a mode, the choreography has to keep
+      // running underneath, or the wall freezes and then sweeps instead of
+      // winding down out of the movement.
+      if (this.blendState === BLEND_NONE || settling) this.animT += dtS;
 
       spec.fn(this.cur, this.animT, {
         modeSpeed: this.modeSpeed, digits: this.digits, temp: this.temp,
       });
 
-      if (settling) return this.settleBlend(nowMs);
-      if (this.blendState !== BLEND_NONE) return this.blendIntoMode(nowMs);
+      // Applied BEFORE the settle, so an entry blend that is still outstanding
+      // keeps fading on top of the choreography rather than vanishing.
+      const blending = this.blendState !== BLEND_NONE ? this.blendIntoMode(nowMs) : false;
+
+      if (settling) return this.settleBlend(nowMs) || blending;
+      if (blending) return true;
       if (this.animating) return this.plainSweep(nowMs);
       return false;
     }

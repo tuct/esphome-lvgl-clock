@@ -225,8 +225,14 @@ def role_of(row):
             return "mode_speed"
         if "transition" in name or "sweep" in name:
             return "transition"
-    if domain == "button" and ("reload" in name or "firmware" in name):
-        return "reload"
+    if domain == "button":
+        # Both of the master's buttons say "firmware", and controls is a dict -
+        # so matching them the same way silently drops one of them. What each
+        # one RESTORES is the difference.
+        if "pattern" in name:
+            return "reload_patterns"
+        if "look" in name or "reset" in name:
+            return "reset_look"
     if domain == "sensor":
         # device_class is what Home Assistant itself calls it. Falling back to
         # the unit catches an ESPHome sensor that never declared one.
@@ -303,8 +309,12 @@ def call(domain, service, data):
             raise ValueError("value must be a number")
     if domain == "text":
         value = data.get("value")
-        if not isinstance(value, str) or not value:
-            raise ValueError("value must be a non-empty string")
+        # EMPTY IS VALID. An empty cycle list means "no rotation, stay on
+        # whatever Mode says", and an empty pattern slot means "nothing here,
+        # fall back to the time". The non-empty check was written for pattern
+        # strings and quietly made both of those impossible.
+        if not isinstance(value, str):
+            raise ValueError("value must be a string")
         # The master's text fields are 255 characters. A packed 24-clock
         # pattern is about 164, so this only trips on something that is not a
         # pattern - and it trips here rather than as a silent truncation on the
@@ -324,11 +334,15 @@ def call(domain, service, data):
 DISPLAY_FIELDS = {
     "id": str, "name": str, "board": str, "mirror": bool, "mode": str,
     "cycle": str, "cycle_interval": int, "digit_gap": float,
+    "mode_speed": float, "transition": int,
+    "movement": str, "window": int, "return_to_time": bool,
     "hand_color": str, "background": str, "face_color": str, "show_face": bool,
 }
 DISPLAY_DEFAULTS = {
     "name": "Display", "board": "", "mirror": True, "mode": "cycle",
     "cycle": "", "cycle_interval": 120, "digit_gap": 0.0,
+    "mode_speed": 1.0, "transition": 5000,
+    "movement": "opposite", "window": 35, "return_to_time": True,
     "hand_color": "#ffffff", "background": "#000000",
     "face_color": "#1f1f23", "show_face": False,
 }
@@ -374,6 +388,14 @@ def save_displays(items):
         out["name"] = out["name"][:60] or "Display"
         out["cycle_interval"] = max(5, min(3600, out["cycle_interval"]))
         out["digit_gap"] = max(0.0, min(2.0, out["digit_gap"]))
+        out["mode_speed"] = max(0.1, min(5.0, out["mode_speed"]))
+        out["transition"] = max(200, min(60000, out["transition"]))
+        out["window"] = max(2, min(3600, out["window"]))
+        if out["movement"] not in ("opposite", "clockwise", "counter", "long"):
+            raise ValueError("movement: %r is not one of opposite/clockwise/"
+                             "counter/long" % out["movement"])
+        # One long string of mode names; the card ignores any it does not know.
+        out["cycle"] = out["cycle"][:255]
         clean.append(out)
     os.makedirs(DATA_DIR, exist_ok=True)
     tmp = DISPLAYS_PATH + ".tmp"

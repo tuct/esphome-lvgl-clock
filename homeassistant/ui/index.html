@@ -88,10 +88,13 @@
     </div>
 
     <div class="field" id="f-cycle">
-      <div class="flabel">Cycle list<span class="fnote">in order — repeats count</span></div>
-      <div class="cyclerow">
-        <div class="taglist" id="cycletags"></div>
-        <button class="ghost" id="cycleedit">Edit</button>
+      <div class="flabel">Cycle list<span class="fnote">in order — drag to reorder, repeats count</span></div>
+      <div class="taglist" id="cycletags"></div>
+      <div class="addrow">
+        <div class="selwrap"><select id="cycleadd"></select></div>
+        <button class="ghost" id="cycleaddbtn">Add</button>
+        <span class="spacer"></span>
+        <button class="ghost small" id="cycletext">Edit as text</button>
       </div>
       <div class="editrow hidden" id="cycleeditrow">
         <input id="cycleinput" spellcheck="false" placeholder="wave,wind,spiral">
@@ -102,6 +105,7 @@
 
     <div class="foot">
       <button class="ghost" id="reload">Reload patterns from firmware</button>
+      <button class="ghost" id="resetlook">Reset look to firmware</button>
       <span class="hint" id="temp"></span>
     </div>
   </section>

@@ -851,12 +851,19 @@ editable while it runs — no reflash at all, not even of the master.
 | `Mode speed` | `number`, ×1 is the base. See below — this one is not a plain multiplier |
 | `Hand colour` · `Background colour` | `text`, `#rrggbb`. Runtime, and on the wire — so a sunset automation warms the whole wall at once |
 | `Reload patterns from firmware` | `button`. Throws away runtime edits and restores the folder — the way out of a bad one |
+| `Reset look to firmware` | `button`. The same, for the saved look: movement, sweep length, speed, colours, cycle list and interval |
 
 All of them are **broadcast**, so a change on the master reaches every listener
 on the next packet. That is not a convenience: `mode_speed` scales the
 animation's time base, so two boards on different values drift apart rather
 than merely look different. Sending them from one place is what makes that
 impossible to get wrong.
+
+**All of it is saved to flash**, ten seconds after the last change — long
+enough that dragging a colour picker is one write, not fifty. So flash wins
+over the compiled-in config at boot, and `Reset look to firmware` exists for
+the same reason its pattern counterpart does. The mode is not saved: a wall
+should come back telling the time.
 
 **Changing the speed is the interesting one.** A choreography is evaluated at
 `t × mode_speed`, so a new multiplier moves *where the animation is*, not only

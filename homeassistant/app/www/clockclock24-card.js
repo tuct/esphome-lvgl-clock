@@ -742,7 +742,12 @@ window.CC = {
     settleToTime(nowMs) {
       this.settleFrom = this.mode;
       this.mode = "time";
-      this.blendState = BLEND_NONE;
+      // The entry blend is deliberately NOT cancelled. A mode can be left
+      // before it has finished fading in - a short window, or two mode changes
+      // in quick succession - and cur[] currently includes whatever offset is
+      // still outstanding. Dropping it makes the very next frame render the
+      // raw choreography instead: a jump of exactly that offset, up to 180
+      // degrees, which is measurable and was happening.
       for (let d = 0; d < NUM_DIGITS; d++) {
         const val = this.digits[d];
         const blank = val < 0 || val > 9;
@@ -879,14 +884,22 @@ window.CC = {
       // the blend chases a STILL target. Without this every hand fades toward
       // a moving pose and the wall never starts uniform — which is exactly the
       // "wind doesn't start with all hands in the same place" bug.
-      if (this.blendState === BLEND_NONE) this.animT += dtS;
+      //
+      // Once we are settling OUT of a mode, the choreography has to keep
+      // running underneath, or the wall freezes and then sweeps instead of
+      // winding down out of the movement.
+      if (this.blendState === BLEND_NONE || settling) this.animT += dtS;
 
       spec.fn(this.cur, this.animT, {
         modeSpeed: this.modeSpeed, digits: this.digits, temp: this.temp,
       });
 
-      if (settling) return this.settleBlend(nowMs);
-      if (this.blendState !== BLEND_NONE) return this.blendIntoMode(nowMs);
+      // Applied BEFORE the settle, so an entry blend that is still outstanding
+      // keeps fading on top of the choreography rather than vanishing.
+      const blending = this.blendState !== BLEND_NONE ? this.blendIntoMode(nowMs) : false;
+
+      if (settling) return this.settleBlend(nowMs) || blending;
+      if (blending) return true;
       if (this.animating) return this.plainSweep(nowMs);
       return false;
     }
@@ -1212,6 +1225,9 @@ window.CC = {
     return_to_time: true,       // …then back to the clock until the next one
     transition: 5000,           // ms for a sweep, and for the fade into a mode
     mode_speed: 1.0,
+    // How the two hands travel to a new digit, same names as the firmware.
+    // wall.js has always honoured this; it was simply never in the config.
+    movement: "opposite",       // opposite | clockwise | counter | long
     hand_color: "#ffffff",
     background: "#000000",
     face_color: "#1f1f23",
@@ -1284,6 +1300,7 @@ window.CC = {
       this._wall = new C.Wall();
       this._wall.transitionMs = cfg.transition;
       this._wall.modeSpeed = cfg.mode_speed;
+      this._wall.movement = cfg.movement;
       this._pushTime(performance.now());
 
       // Fixed mode, or the rotation.
@@ -1291,6 +1308,36 @@ window.CC = {
       this._nextWindow = 0;
       this._inWindow = false;
       if (cfg.mode !== "cycle") this._wall.setMode(this._modeFor(cfg.mode), performance.now());
+    }
+
+    // Change what is showing on the LIVE card.
+    //
+    // setConfig() rebuilds everything, which throws away where the hands are -
+    // and this card exists to be an analogue clock, so it cannot jump. Anything
+    // following a real wall must come through here instead.
+    setMode(name, pattern) {
+      if (pattern !== undefined && pattern !== this._cfg.pattern) {
+        this._cfg.pattern = pattern;
+        this._pattern = pattern ? C.pattern.parseESPHome(pattern) : null;
+        this._patternLoaded = false;
+      }
+      if (name === this._cfg.mode && name !== "pattern") return;
+      this._cfg.mode = name;
+      this._cycleAt = -1;
+      this._inWindow = false;
+      if (name === "cycle") { this._nextWindow = 0; return; }
+      this._wall.setMode(this._modeFor(name), performance.now());
+    }
+
+    // Colours, live. Same reason as setMode: rebuilding to recolour would
+    // restart the animation, and the hands would jump.
+    setColors(hand, background) {
+      if (hand) this._cfg.hand_color = hand;
+      if (background) {
+        this._cfg.background = background;
+        const wrap = this.shadowRoot && this.shadowRoot.querySelector(".wrap");
+        if (wrap) wrap.style.background = background;
+      }
     }
 
     // `pattern` is drawn by the pattern mode, which reads the decoded spec.
@@ -1357,7 +1404,17 @@ window.CC = {
         this._nextWindow = t + cfg.cycle_interval * 1000;
       } else if (this._inWindow && t >= this._windowEnds) {
         this._inWindow = false;
-        if (cfg.return_to_time) { this._digits = null; this._pushTime(t); }
+        if (cfg.return_to_time) {
+          // Digits FIRST, then leave the mode: settleToTime() reads
+          // wall.digits to work out where every hand is going, and setDigits()
+          // is a no-op while a choreography is running (it only settles when
+          // the mode is already `time`). Pushing digits without this left the
+          // wall animating for ever; leaving the mode without it settled to
+          // whatever minute was last shown.
+          this._digits = null;
+          this._pushTime(t);
+          this._wall.setMode("time", t);
+        }
       }
       if (!this._inWindow) this._pushTime(t);
     }
