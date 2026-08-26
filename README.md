@@ -126,9 +126,10 @@ Nothing is copied, pasted, compiled or flashed.
 are read as well as written, so a pattern already running is a starting point
 rather than something you have to have kept a copy of.*
 
-**[Or open the standalone sandbox →](https://tuct.github.io/esphome-lvgl-clock/)** — same engine, no install, nothing
-to set up. Draw, export the one line of text, and paste it into a pattern field
-on the master. Use it to try the whole wall before you have built one; the
+**[Or open the standalone sandbox →](https://tuct.github.io/esphome-lvgl-clock/)**
+— same engine, no install, nothing to set up. Draw, export the one line of
+text, and paste it into a pattern field on the master. Use it to try the whole
+wall before you have built one; the
 [source is here](./tools/clockclock24-sim/).
 
 Or write a choreography in JavaScript, watch it, and transcribe it into the
