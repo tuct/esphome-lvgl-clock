@@ -675,12 +675,14 @@ Assistant entities, and both are editable **while it runs**:
 **A cycle list takes pattern names.** `wind,fan,love,shear` plays those two
 patterns by name rather than leaving it to a round-robin — the list reads back
 with the names too, so you can see what was accepted. A bare `pattern` still
-means "the next one".
+means "the next one in the store", advanced **once per window**.
 
 **`Mode` is an override, not a preference.** With a cycle interval set, the
-next window opens on schedule and takes the wall back. Set the interval to
-**`off`** and the rotation stops entirely — the wall then shows whatever `Mode`
-says and only changes when you or an automation change it.
+next window opens on schedule and takes the wall back, and between windows the
+wall goes back to **telling the time** — picking a choreography says "show me
+this now", never "stop being a clock". Set the interval to **`off`** and the
+rotation stops entirely — the wall then shows whatever `Mode` says and only
+changes when you or an automation change it.
 
 Edits are saved to flash, so the wall keeps them with Home Assistant off — the
 seven listeners still need nothing but power and a wire. A pattern write is

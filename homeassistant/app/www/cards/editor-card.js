@@ -68,6 +68,15 @@
           .pm { opacity:.6; }
           .val { min-width:9.5em; text-align:right; font-variant-numeric:tabular-nums; font-size:.85em; }
           .hint { margin:8px 0 0; font-size:.8em; opacity:.7; }
+          /* Holding something is a state you should be able to see without
+             reading - the dot is the same one the wall panel marks patterns
+             with. */
+          .hint.held { opacity:1; color:var(--primary-color,#03a9f4); }
+          .hint.held::before {
+            content:""; display:inline-block; width:5px; height:5px;
+            border-radius:50%; background:currentColor; margin-right:6px;
+            vertical-align:middle;
+          }
           .hint.inline { margin:0; }
           .sec { margin:16px 0 2px; font-size:.72em; letter-spacing:.09em;
                  text-transform:uppercase; opacity:.55; font-weight:600;
@@ -152,8 +161,8 @@
 
             <div class="row">
               <span class="lbl">pose</span>
-              <button id="home" title="Every selected hand back on the pose you configured">Back to pose</button>
-              <button id="seed" title="Freeze where the hands are NOW as the pose">Wall to pose</button>
+              <button id="home" title="Put all 24 clocks back on the pose you configured">Back to pose</button>
+              <button id="seed" title="Freeze where the selected hands are NOW as their pose">Wall to pose</button>
             </div>
 
           <div class="sec">Copy<span class="secnote">from the primary clock to every selected one</span></div>
@@ -171,6 +180,7 @@
               <button id="row">Its row</button>
               <button id="col">Its column</button>
             </div>
+            <p class="hint" id="clipnote"></p>
 
           <div class="sec">The pattern<span class="secnote">whole wall &mdash; not just the selection</span></div>
             <div class="row">
@@ -237,14 +247,24 @@
         $("playnote").textContent = this._running ? "running" : "paused";
         this._rebase(() => {});   // resume from where the hands are
       };
-      // Back to pose / Wall to pose are inverses, and both act on the
-      // SELECTION: applying either to all 24 when one clock is selected is how
-      // you lose an afternoon's work to a mis-click.
+      // These two are inverses, and they are NOT symmetric in what they risk.
+      //
+      // `Back to pose` throws nothing away - it re-cuts every anchor from the
+      // pose you configured, so the hands land on it and carry on from there.
+      // Nothing is lost, so there is no reason to make you select first: it
+      // takes ALL 24, and is the resync you reach for mid-run when the wall has
+      // wandered off somewhere you did not mean.
+      //
+      // `Wall to pose` OVERWRITES the pose with whatever is on screen. That one
+      // stays on the selection, because doing it to all 24 on a mis-click is
+      // how you lose an afternoon's work.
       $("home").onclick = () => {
-        this._each(i => { P.anchorAt(i, 0, P.get(i).h0, this._t);
-                          P.anchorAt(i, 1, P.get(i).h1, this._t); });
+        for (let i = 0; i < C.NUM_CLOCKS; i++) {
+          P.anchorAt(i, 0, P.get(i).h0, this._t);
+          P.anchorAt(i, 1, P.get(i).h1, this._t);
+        }
         this._sync();
-        this._note(`Back to pose — ${this._sel.size} clock${this._sel.size > 1 ? "s" : ""}.`);
+        this._note(`Back to pose — all ${C.NUM_CLOCKS} clocks.`);
       };
       $("seed").onclick = () => {
         this._each(i => { P.setHomeAt(i, 0, this._angle(i, 0), this._t);
@@ -269,12 +289,14 @@
           this._scope = b.dataset.s;
           this.shadowRoot.querySelectorAll("button.scope").forEach(o =>
             o.setAttribute("aria-pressed", String(o === b)));
+          this._clipNote();
           this._note(`Copy will carry ${b.textContent.toLowerCase()}.`);
         };
       });
       $("copyc").onclick = () => {
         this._clip = P.copy(this._primary);
         this._clipFrom = this._primary;
+        this._clipNote();
         this._note(`Copied clock ${this._primary}. Select targets, then Paste.`);
       };
       $("pastec").onclick = () => {
@@ -306,6 +328,7 @@
       this._cv.addEventListener("pointermove", e => this._hover(e));
       this._cv.addEventListener("pointerleave", () => { this.$("tip").style.display = "none"; });
 
+      this._clipNote();
       this._sync();
     }
 
@@ -329,6 +352,23 @@
         P.anchorAt(i, 1, spec[i * 2 + 1], this._t);
       }
       this._sync();
+    }
+
+    // What the clipboard is holding, said out loud. The scope buttons change
+    // what a Paste carries, so it is folded into the same line rather than
+    // being a second thing to cross-reference - and "nothing yet" is worth
+    // saying too, next to a Paste button that would otherwise look pressable
+    // with nothing behind it.
+    _clipNote() {
+      const el = this.$("clipnote");
+      const what = this._scope === "all" ? "pose and motion"
+                 : this._scope === "position" ? "position" : "motion";
+      const held = this._clip != null;
+      el.textContent = held
+        ? `Holding clock ${this._clipFrom} — Paste carries ${what}.`
+        : "Nothing copied yet — Copy remembers the primary clock.";
+      el.classList.toggle("held", held);
+      this.$("pastec").disabled = !held;
     }
 
     // Copy from `src` (or the primary) into everything `pred` matches.

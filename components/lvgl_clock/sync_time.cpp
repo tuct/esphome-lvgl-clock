@@ -305,6 +305,7 @@ void SyncTime::update() {
   // Whether this was the scheduled tick or a mode change firing early, record
   // what went out so loop() only triggers on an actual change.
   this->last_tx_mode_ = mode;
+  this->last_tx_slot_ = this->pattern_slot_;
   // Per-packet at VERBOSE (one a second is a lot), plus a throttled summary at
   // DEBUG so `logger: level: DEBUG` is enough to see the bus is alive.
   ESP_LOGV(TAG, "TX: %.*s", n - 1, out);
@@ -373,8 +374,14 @@ void SyncTime::loop() {
     // time. No amount of timestamp correction touches that, because the packet
     // simply has not been sent yet.
     LvglClock *primary = this->primary_clock_();
-    if (primary != nullptr && (int) primary->get_mode() != this->last_tx_mode_) {
-      ESP_LOGI(TAG, "TX mode -> %s", clock_mode_name(primary->get_mode()));
+    // The pattern slot counts too. `pattern` with a different slot in it is a
+    // different thing on the wall, and leaving it for the next scheduled
+    // broadcast meant the master's own first panel swapped up to a second
+    // before the other twenty-three.
+    if (primary != nullptr && ((int) primary->get_mode() != this->last_tx_mode_ ||
+                               primary->get_pattern_slot() != this->last_tx_slot_)) {
+      ESP_LOGI(TAG, "TX mode -> %s (pattern %d)", clock_mode_name(primary->get_mode()),
+               primary->get_pattern_slot());
       this->update();
     }
     return;

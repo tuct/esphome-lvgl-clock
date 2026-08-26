@@ -375,11 +375,25 @@ class LvglClock : public Component, public lvgl::LvCompound {
   // Which pattern `mode: pattern` draws. Set from the sync packet, so the whole
   // wall plays the same one; a slot with nothing in it falls back to the time.
   void set_pattern_slot(int slot) {
-    if (slot != this->pattern_slot_) {
-      this->pattern_slot_ = slot;
-      if (this->mode_ == CC_MODE_PATTERN)
-        this->cc_dirty_ = true;
+    if (slot == this->pattern_slot_)
+      return;
+    // Swapping the data under a running pattern moves every hand at once, and
+    // "it cannot jump" is not suspended because the jump came from a dropdown.
+    // Blend it, exactly as entering a mode does.
+    //
+    // The phase base is deliberately NOT restamped: it is what keeps all eight
+    // boards on the same frame of the pattern, and re-cutting it here would set
+    // it from whenever each board happened to hear about the swap. So the new
+    // pattern comes in at the shared phase rather than at its authored pose,
+    // which for a cycle window is the same thing - the window opens at phase 0.
+    if (this->mode_ == CC_MODE_PATTERN && this->blend_state_ == BLEND_NONE) {
+      for (int i = 0; i < NUM_HANDS; i++)
+        this->blend_off_[i] = this->cur_[i];
+      this->blend_state_ = BLEND_PENDING;
     }
+    this->pattern_slot_ = slot;
+    if (this->mode_ == CC_MODE_PATTERN)
+      this->cc_dirty_ = true;
   }
   int get_pattern_slot() const { return this->pattern_slot_; }
 

@@ -92,6 +92,10 @@ static const float TEMP_GLYPHS[4][CLOCKS_PER_DIGIT][2] = {
 };
 
 static inline float wrap360(float a) { return fmodf(fmodf(a, 360.0f) + 360.0f, 360.0f); }
+// The same in double, for angles that are a rate times an unbounded elapsed
+// time - a pattern held for a day is millions of degrees before it is wrapped,
+// and a float has run out of resolution long before then.
+static inline double wrap360_d(double a) { return fmod(fmod(a, 360.0) + 360.0, 360.0); }
 
 // Signed shortest way round from `a` to `b`, in (-180, 180].
 static inline float shortest_delta(float a, float b) {
@@ -1285,10 +1289,15 @@ void LvglClock::tick_pattern_(double t) {
   double ts = t * this->mode_speed_;
   for (int c = 0; c < NUM_CLOCKS && c < PATTERN_CLOCKS; c++) {
     const PatternClock &pc = p->clocks[c];
-    float a0 = (float) pc.h0 + (float) pc.dir0 * (pc.v0 / 100.0f) * PATTERN_MAX_RATE * (float) ts;
-    float a1 = (float) pc.h1 + (float) pc.dir1 * (pc.v1 / 100.0f) * PATTERN_MAX_RATE * (float) ts;
-    this->cur_[c * 2 + 0] = wrap360(a0);
-    this->cur_[c * 2 + 1] = wrap360(a1);
+    // Double, not float, all the way to the wrap. `t` is unbounded - a pattern
+    // set by hand with the cycle off runs for as long as you leave it - and a
+    // float loses a degree of resolution somewhere around a day of that, then
+    // keeps losing. The wrap is what brings it back into 0..360, so it has to
+    // happen before the value is narrowed, not after.
+    double a0 = (double) pc.h0 + pc.dir0 * (pc.v0 / 100.0) * PATTERN_MAX_RATE * ts;
+    double a1 = (double) pc.h1 + pc.dir1 * (pc.v1 / 100.0) * PATTERN_MAX_RATE * ts;
+    this->cur_[c * 2 + 0] = (float) wrap360_d(a0);
+    this->cur_[c * 2 + 1] = (float) wrap360_d(a1);
   }
   this->cc_dirty_ = true;
 }
@@ -1296,7 +1305,14 @@ void LvglClock::tick_pattern_(double t) {
 // Parse a comma-separated cycle list. See set_cycle_modes_text() in the header
 // for why unknown names are dropped rather than refused.
 void LvglClock::set_cycle_modes_text(const std::string &text) {
-  this->cycle_modes_.clear();
+  // BOTH, and that is the whole point: cycle_slots_ runs parallel to
+  // cycle_modes_, and clearing only one leaves every pattern entry reading the
+  // slot of whatever used to be at that index. The symptom is not subtle - a
+  // list written as `wave,tobi,wind` comes back as `wave,pattern,wind`, because
+  // the stale slot is the -1 that a plain mode entry left behind, and a -1 slot
+  // is a bare `pattern`. Which then also makes the picker riffle the whole
+  // store at frame rate; see update_mode_cycle_().
+  this->clear_cycle_modes();
   size_t i = 0;
   while (i <= text.size()) {
     size_t j = text.find(',', i);
@@ -1558,7 +1574,15 @@ void LvglClock::override_mode(ClockMode m) {
   this->cycle_overridden_ = true;
   this->cycle_override_slot_ = this->current_cycle_slot_();
   this->cycle_left_s_ = 1e9;
-  this->base_mode_ = m;                 // and this is what a window returns to
+  // What a window RETURNS TO - which is not the same thing as what you just
+  // asked for. Picking a choreography means "show me this now". It does not
+  // mean the wall should stop telling the time between windows from then on,
+  // which is what taking `m` unconditionally did: one pick from Home Assistant
+  // and the clock quietly stopped being a clock, for ever, with nothing on
+  // screen to say why. Picking `time` (or `demo`) is a rest state and does
+  // carry.
+  if (!is_idle_animation_(m))
+    this->base_mode_ = m;
   ESP_LOGI(TAG, "Mode set to %s by request", clock_mode_name(m));
   this->apply_mode_(m);
 }
@@ -1640,7 +1664,13 @@ void LvglClock::update_mode_cycle_() {
         if (want < 0) {
           if (pattern_store().count() == 0)
             continue;
-          want = (this->pattern_slot_ + 1) % pattern_store().count();
+          // A bare `pattern` means "the next one in the store". NEXT is decided
+          // when the window OPENS - this function runs every frame, and
+          // advancing here stepped through the whole store thirty times a
+          // second. Only the picker runs update_mode_cycle_(), so on a wall it
+          // showed up as one clock spinning while the rest were fine.
+          want = this->cycle_active_ ? this->pattern_slot_
+                                     : (this->pattern_slot_ + 1) % pattern_store().count();
         }
         if (pattern_store().get(want) == nullptr)
           continue;
@@ -1659,7 +1689,13 @@ void LvglClock::update_mode_cycle_() {
         this->mode_entry_lead_s_();
     if (!this->cycle_active_) {
       this->cycle_active_ = true;
-      this->base_mode_ = this->mode_;
+      // Same rule as override_mode(): base_mode_ is the state the wall RESTS
+      // in, and a choreography is never that. Without the guard this line
+      // undoes the one there - the override is still on screen when the next
+      // window opens, so the wall captures it as its resting state anyway and
+      // never returns to the clock.
+      if (!is_idle_animation_(this->mode_))
+        this->base_mode_ = this->mode_;
       ESP_LOGI(TAG, "Choreography: %s for %us (back to %s after)", clock_mode_name(m),
                (unsigned) CYCLE_WINDOW_S, clock_mode_name(this->base_mode_));
     }

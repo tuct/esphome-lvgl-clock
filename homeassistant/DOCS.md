@@ -157,10 +157,15 @@ squared — a linear travel spends nine tenths of itself above 9°/s, and the sl
 end is where a pattern reads. The readout gives both the percentage and the
 resulting °/s, so a value you liked is one you can dial back to.
 
-**Back to pose** puts the selected hands on the pose you configured.
+**Back to pose** puts every hand on the wall back on the pose you configured —
+**all 24, whatever is selected**. It throws nothing away, so there is nothing to
+select first: it is the resync you reach for mid-run, when the wall has wandered
+somewhere you did not mean and you want to see the shape you drew again.
+
 **Wall to pose** is its inverse: it freezes wherever the hands are *now* as the
 pose, so anything you like the look of mid-motion can become a starting point.
-Both act on the selection only.
+That one **does** overwrite what you configured, so it takes the **selection**
+only — doing it to all 24 on a mis-click is how you lose an afternoon's work.
 
 ### Copy
 
@@ -173,7 +178,9 @@ Copy carries what you tell it to:
 | **Motion only** | Direction and rate, leaving each target's pose alone |
 
 **Copy** remembers the primary clock; **Paste into selection** writes it into
-every selected one. **All 24 / Its row / Its column** are shortcuts that skip
+every selected one. The line underneath says what is being held — which clock,
+and what a paste would carry — or *Nothing copied yet*, in which case **Paste**
+is greyed out rather than looking pressable with nothing behind it. **All 24 / Its row / Its column** are shortcuts that skip
 the selection step. Scope applies to all of them — "make this whole row turn
 like this one but keep where each hand is" is a normal thing to want, and
 pasting everything is the one operation that cannot express it.

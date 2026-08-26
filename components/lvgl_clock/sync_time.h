@@ -173,6 +173,9 @@ class SyncTime : public time::RealTimeClock, public uart::UARTDevice {
   // broadcasts immediately rather than leaving the wall dark until the first
   // scheduled tick.
   int last_tx_mode_{-1};
+  // Watched alongside the mode: picking a different pattern changes what the
+  // wall draws just as much as picking a different mode does.
+  int last_tx_slot_{-1};
   // Slave only: last mode taken off the wire, so a change is logged once
   // rather than on every packet. -1 = nothing received yet.
   int last_rx_mode_{-1};
