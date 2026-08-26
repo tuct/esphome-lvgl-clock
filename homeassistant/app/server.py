@@ -82,27 +82,65 @@ def core(path, payload=None, raw=False):
 # would mean hand-rolling RFC 6455 framing for one lookup. /api/template
 # renders server-side and has device_attr(), which is the whole registry -
 # one request, no dependencies.
+#
+# TWO PASSES, INSIDE ONE TEMPLATE, and that structure is the point. Emitting
+# every text/select/button/sensor in the house overflows Home Assistant's
+# 256 kB render limit on any real installation - a house with 33 devices has
+# hundreds of sensors alone:
+#
+#   Error rendering template: Template output exceeded maximum size
+#
+# So the first pass emits nothing: it only collects the DEVICE ids that look
+# like a wall. The second expands just those, through device_entities(). The
+# output is a handful of devices however big the house is.
 DISCOVER_TEMPLATE = """
-{%- set ns = namespace(rows=[]) -%}
-{%- for group in [states.text, states.select, states.button, states.sensor] -%}
-{%- for s in group -%}
-  {%- set did = device_id(s.entity_id) -%}
-  {%- if did -%}
-    {%- set ns.rows = ns.rows + [{
-      "entity_id": s.entity_id,
-      "name": s.name,
-      "state": s.state,
-      "options": s.attributes.options | default([]),
-      "device_id": did,
-      "device": device_attr(did, "name_by_user") or device_attr(did, "name"),
-      "manufacturer": device_attr(did, "manufacturer"),
-      "model": device_attr(did, "model"),
-      "sw": device_attr(did, "sw_version")}] -%}
+{%- set ns = namespace(ids=[]) -%}
+
+{#- a wall by its marker: model is what the thing is -#}
+{%- for s in states.text -%}
+  {%- set d = device_id(s.entity_id) -%}
+  {%- if d and d not in ns.ids
+        and (device_attr(d, 'model') or '') | lower == '__MODEL__' -%}
+    {%- set ns.ids = ns.ids + [d] -%}
   {%- endif -%}
 {%- endfor -%}
+
+{#- and by its shape, so a master flashed before the marker still appears -#}
+{%- for s in states.select -%}
+  {%- set o = s.attributes.options | default([]) -%}
+  {%- if 'time' in o and 'wave' in o -%}
+    {%- set d = device_id(s.entity_id) -%}
+    {%- if d and d not in ns.ids -%}{%- set ns.ids = ns.ids + [d] -%}{%- endif -%}
+  {%- endif -%}
 {%- endfor -%}
-{{ ns.rows | to_json }}
+
+{%- set out = namespace(rows=[]) -%}
+{%- for did in ns.ids[:__MAXDEV__] -%}
+  {%- for eid in device_entities(did) -%}
+    {%- if eid.split('.')[0] in ['text', 'select', 'button', 'sensor'] -%}
+      {%- set s = states[eid] -%}
+      {%- if s -%}
+        {%- set out.rows = out.rows + [{
+          "entity_id": eid,
+          "name": s.name,
+          "state": s.state,
+          "options": s.attributes.options | default([]),
+          "device_id": did,
+          "device": device_attr(did, 'name_by_user') or device_attr(did, 'name'),
+          "manufacturer": device_attr(did, 'manufacturer'),
+          "model": device_attr(did, 'model'),
+          "sw": device_attr(did, 'sw_version')}] -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endfor -%}
+{%- endfor -%}
+{{ out.rows | to_json }}
 """
+# str.replace, not %-formatting: Jinja's own {%- ... -%} looks like a format
+# spec to Python and blows up before the template is ever sent.
+DISCOVER_TEMPLATE = (DISCOVER_TEMPLATE
+                     .replace("__MODEL__", MASTER_MODEL)
+                     .replace("__MAXDEV__", "12"))
 
 
 def role_of(row):

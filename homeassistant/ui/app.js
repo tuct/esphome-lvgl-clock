@@ -185,7 +185,10 @@
       }
       render();
     } catch (err) {
-      setLive("err", `<b>Home Assistant unreachable.</b> ${esc(err.message)}`);
+      // Say what actually failed. "Unreachable" was wrong for a template that
+      // rendered fine and then got rejected, and sent people looking at their
+      // network instead of at the message.
+      setLive("err", `<b>Could not read Home Assistant.</b> ${esc(err.message)}`);
     }
   }
 
