@@ -63,11 +63,11 @@ homeassistant/
 ```
 
 `app/www/` is a **copy** — Docker cannot reach outside its build context. Run
-`./build.sh` after changing a mode or a card and it re-stages from
+`./stage.sh` after changing a mode or a card and it re-stages from
 [`tools/clockclock24-sim`](../tools/clockclock24-sim) and `cards/`.
 
 ```sh
-./build.sh
+./stage.sh
 CC24_ROOT=$PWD/app CC24_CONFIG=/tmp/x CC24_OPTIONS=/nonexistent \
   python3 app/server.py            # runs on :8099, without Home Assistant
 ```

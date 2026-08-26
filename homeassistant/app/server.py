@@ -266,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
             path = install_card()
             return self._send(200, json.dumps(
                 {"installed": bool(path), "file": CARD,
-                 "error": None if path else "run build.sh, then rebuild the add-on"}))
+                 "error": None if path else "run stage.sh, then rebuild the add-on"}))
 
         # Static, confined to www/ - join then verify, so ".." cannot climb out.
         safe = posixpath.normpath("/" + tail).lstrip("/")

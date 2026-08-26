@@ -1,0 +1,18 @@
+# Which base image each architecture builds on.
+#
+# WITHOUT THIS FILE the Supervisor passes BUILD_ARCH but not BUILD_FROM, so the
+# Dockerfile falls back to its ARG default and an aarch64 machine tries to pull
+# an amd64 base:
+#
+#   ERROR: no match for platform in manifest: not found
+#
+# The tags are not uniform, and cannot be: home-assistant/*-base stopped
+# publishing the 32-bit architectures at Alpine 3.22, while the 64-bit ones are
+# on 3.24. Pinned rather than :latest so a rebuild months from now produces the
+# same image.
+build_from:
+  aarch64: ghcr.io/home-assistant/aarch64-base:3.24
+  amd64: ghcr.io/home-assistant/amd64-base:3.24
+  armv7: ghcr.io/home-assistant/armv7-base:3.22
+  armhf: ghcr.io/home-assistant/armhf-base:3.22
+  i386: ghcr.io/home-assistant/i386-base:3.22
