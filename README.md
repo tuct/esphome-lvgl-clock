@@ -8,22 +8,34 @@ form the digits and spend the time in between doing something else entirely.
 
 *↑ The finished wall, running. [Watch it](https://www.youtube.com/watch?v=BnIoumtDO5s).*
 
-> ### Draw your own patterns — in the browser, no code, no reflash
+> ### Run it from Home Assistant — no code, no compiling, no reflash
 >
-> **[The project site](https://tuct.github.io/esphome-lvgl-clock/)** runs the
-> real firmware engine live, and its
-> **[pattern editor](./tools/clockclock24-sim/)** is where new movement gets
-> made. Three steps:
+> The **[Home Assistant add-on](./homeassistant/README.md)** is how this wall is
+> meant to be used. One sidebar item, and it finds your master by itself.
 >
-> 1. **Pose the 24 clocks** — drag the hands, shift-click to do several at once.
-> 2. **Give each hand a motion** — a direction and a speed, either a number or
->    *"the same as my neighbour, ± a bit"*, so a gradient across the wall is one
->    value instead of eight.
-> 3. **Export**, and paste the one line of text into a field in Home Assistant.
+> <img src="./images/ha-addon-panel.png" width="100%">
 >
-> The master pushes it down the sync bus and **the whole wall is running it a
-> second later, with nothing reflashed** — not even the master. That is what the
-> single-master design is for.
+> *↑ Driving a real wall. The preview is the wall's own engine, so it is showing
+> what the wall is showing — here, `love`. `fan`, `shear` and `tobi` are
+> patterns drawn in the editor below and sent to the master; they sit in the
+> Mode list beside the built-in choreographies and drop into the cycle list like
+> any of them.*
+>
+> | | |
+> |---|---|
+> | **Drive it** | Mode, cycle list, cadence, movement, sweep length, choreography speed, hand and background colour — live, on the wire, all 24 clocks in one packet |
+> | **Draw for it** | The pattern editor, wired straight to a slot on the master: pose the hands, set each one turning, press **Send** |
+> | **Automate it** | Every control is an ordinary entity, so amber and slow at sunset is two service calls |
+> | **Show it** | A dashboard card, and full-screen pages for wall tablets — with or without hardware |
+>
+> **Send** is the whole point: the master saves the pattern to flash, pushes it
+> down the sync bus, and **24 real analogue clocks are running it a second
+> later, with nothing recompiled and nothing reflashed** — not even the master.
+> That is what the single-master design is for.
+>
+> No Home Assistant? The same editor runs standalone on
+> **[the project site](https://tuct.github.io/esphome-lvgl-clock/)** — draw
+> there, export one line of text, paste it into a field on the master.
 
 The original is a beautiful, expensive piece of kinetic art. This is the same
 idea built from **24 round LCD panels and eight £5 microcontrollers**, driven by
@@ -34,6 +46,8 @@ idea built from **24 round LCD panels and eight £5 microcontrollers**, driven b
 | [**Build it — 24 round screens**](#the-build) | The real thing. 24 panels, 8 boards, no gaps. **Running on hardware** |
 | [**Build it — 4 screens**](#the-cheap-way-in) | A sixth of the displays, at the cost of a gap between the digits |
 | [**What it does**](#what-it-does--the-modes) | The choreographies, and drawing your own in the browser |
+| [**Run it**](#in-home-assistant) | The Home Assistant add-on — control panel, pattern editor, tablet views |
+| [**Try it now →**](https://tuct.github.io/esphome-lvgl-clock/) | The whole wall in your browser, running the firmware's own engine. Nothing to install |
 
 ## The build
 
@@ -93,19 +107,29 @@ Telling the time is the easy part. Every minute the wall breaks into a
 
 ### Draw your own — no code, no reflash
 
-[**Open the sandbox →**](./tools/clockclock24-sim/) It is the same engine as the
-firmware, running in a browser.
+Beyond the built-in choreographies, a **pattern** is 24 per-clock poses and
+speeds that are *data, not firmware*. You draw one in the **Motion Pattern
+Editor**: set a pose and a motion for each clock — a direction per hand and a
+speed, either fixed or *"the same as my neighbour, ± a bit"*, so a gradient
+across the wall is one number instead of eight.
 
-Its **Motion Pattern Editor** lets you set a pose and a motion for each of the
-24 clocks — a direction per hand and a speed, either fixed or *"the same as my
-neighbour, ± a bit"* so a gradient across the wall is one number instead of
-eight. Export it, paste it into a text field in Home Assistant, and the master
-pushes it down the bus: **the whole wall has it in a second, with nothing
-reflashed.**
+**In the [Home Assistant add-on](./homeassistant/README.md)** the editor is
+wired to a slot on the master. Draw it, watch it run in the real engine, press
+**Send** — the master writes it to flash and pushes it down the bus, and the
+wall has it a second later. Then its name appears in the Mode list beside
+`wave` and `spiral`, and can be dropped into the cycle list like any of them.
+Nothing is copied, pasted, compiled or flashed.
 
-The same editor is in the [Home Assistant add-on](./homeassistant/README.md)
-and available as a Lovelace card, wired straight to a pattern slot — so
-**Send** replaces the copy and paste entirely.
+<img src="./images/ha-addon-editor.png" width="100%">
+
+*↑ Editing `fan`, pulled back off the wall with **Load from wall** — the slots
+are read as well as written, so a pattern already running is a starting point
+rather than something you have to have kept a copy of.*
+
+**[Or open the standalone sandbox →](https://tuct.github.io/esphome-lvgl-clock/)** — same engine, no install, nothing
+to set up. Draw, export the one line of text, and paste it into a pattern field
+on the master. Use it to try the whole wall before you have built one; the
+[source is here](./tools/clockclock24-sim/).
 
 Or write a choreography in JavaScript, watch it, and transcribe it into the
 firmware — the sandbox is a line-for-line port, so the translation is syntax
@@ -172,6 +196,13 @@ wall in a dashboard, and a **display** is a full-screen page with its own link
 and its own colours — point a tablet at it and leave it there. Same engine as
 the firmware, so it is not an impression of the wall, it is the wall's own code
 with a canvas instead of panels.
+
+<img src="./images/ha-addon-displays.png" width="88%">
+
+*↑ A display, configured. It can mirror a real wall or run on its own, and it
+has the wall's own controls — mode, rotation, cadence, movement, sweep length,
+speed — plus its own colours and, because a screen has no bezels to hide,
+a digit gap you can dial in.*
 
 And the **pattern editor** is there too, wired to the wall: draw a pattern,
 watch it run, press **Send**, and 24 real clocks are running it a second later.

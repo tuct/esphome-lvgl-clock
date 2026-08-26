@@ -1,8 +1,10 @@
 # Home Assistant — add-on and cards
 
-<p align="center">
-  <img src="../images/clockclock24.gif" width="200">
-</p>
+<img src="../images/ha-addon-panel.png" width="100%">
+
+*↑ The panel, driving a real wall. `fan`, `shear` and `tobi` are patterns drawn
+in the editor and sent to the master — they sit in the Mode list beside the
+built-in choreographies.*
 
 Everything Home Assistant lives here: an **add-on** that puts the pattern
 editor in the sidebar and writes patterns straight to the wall, and the two
@@ -48,6 +50,10 @@ browser: the same choreographies, the same easing, the same 24-clock geometry.
 Pose the hands, set each one turning, and **Send** — the master saves it to
 flash, pushes it down the sync bus, and about a second later 24 real analogue
 clocks are running it.
+
+<img src="../images/ha-addon-editor.png" width="100%">
+
+*↑ Editing `fan`, pulled back off the wall with **Load from wall**.*
 
 **Finds your master by itself.** `board_d.yaml` declares
 `project: name: "tuct.digitalclockclock24"`, which Home Assistant registers as

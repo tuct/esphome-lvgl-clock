@@ -65,6 +65,8 @@ At the top is a **preview** — the same engine as the wall, showing what the
 wall is showing. The **Board** picker sits in this panel's header rather than
 the page's, because it picks what this panel acts on.
 
+<img src="https://raw.githubusercontent.com/tuct/esphome-lvgl-clock/main/images/ha-addon-panel.png" width="100%">
+
 
 | | |
 |---|---|
@@ -99,6 +101,8 @@ typo shows up rather than silently changing the wall.
 A **display** is a full-screen page with its own link and its own look: black,
 edge to edge, controls fading out after three seconds. Point a tablet at one
 and leave it there.
+
+<img src="https://raw.githubusercontent.com/tuct/esphome-lvgl-clock/main/images/ha-addon-displays.png" width="100%">
 
 **Add display** makes one. It is configured with the **same controls as the
 wall** — chips for a choice, a slider for a range — because they are the same
@@ -138,6 +142,8 @@ A hand-written link still works without a saved display: `?mirror=1`,
 
 The editor is the real firmware engine running in the browser: the same
 choreographies, the same easing, the same 24-clock geometry.
+
+<img src="https://raw.githubusercontent.com/tuct/esphome-lvgl-clock/main/images/ha-addon-editor.png" width="100%">
 
 **Hover any clock** to see what it is set to — both hands' angles, directions
 and rates. Twenty-four pairs of hands turning at slightly different speeds is
