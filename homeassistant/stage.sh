@@ -4,6 +4,7 @@
 #
 # Two things have to be produced before `docker build`:
 #
+#   app/www/ui/             the control panel - index.html, style.css, app.js
 #   app/www/sim/            the engine, the wall and the pattern model, which
 #                           the add-on's page loads directly
 #   app/www/cards/          the same, plus the Lovelace cards - the add-on's
@@ -19,6 +20,9 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# ui/ is the one SOURCE directory staged here rather than a copy of something
+# else: it exists only for the add-on. It is staged anyway because Docker copies
+# app/ and nothing else.
 SIM="../tools/clockclock24-sim"
 OUT="app/www/clockclock24-card.js"
 PARTS=("$SIM/engine.js" "$SIM/wall.js" "$SIM/pattern.js" "cards/card.js" "cards/editor-card.js")
@@ -28,8 +32,9 @@ for f in "${PARTS[@]}"; do
 done
 
 rm -rf app/www
-mkdir -p app/www/sim app/www/cards
+mkdir -p app/www/sim app/www/cards app/www/ui
 
+cp ui/index.html ui/display.html ui/style.css ui/app.js ui/display.js app/www/ui/
 cp "$SIM"/index.html "$SIM"/engine.js "$SIM"/wall.js "$SIM"/pattern.js app/www/sim/
 cp cards/card.js cards/editor-card.js app/www/cards/
 
@@ -52,6 +57,7 @@ cp cards/card.js cards/editor-card.js app/www/cards/
 } > "$OUT"
 
 echo "staged:"
+echo "  app/www/ui        $(ls app/www/ui | wc -l | tr -d ' ') files"
 echo "  app/www/sim       $(ls app/www/sim | wc -l | tr -d ' ') files"
 echo "  app/www/cards     $(ls app/www/cards | wc -l | tr -d ' ') files"
 echo "  $OUT  ($(wc -l < "$OUT" | tr -d ' ') lines, $(wc -c < "$OUT" | tr -d ' ') bytes)"

@@ -1,0 +1,203 @@
+/* Digital Clock Clock 24 - add-on UI.
+ *
+ * Dark by default, because that is what the wall looks like and what Home
+ * Assistant's own panels mostly are. Everything is a token, so the light
+ * variant is a block of overrides rather than a second stylesheet. */
+
+:root {
+  --bg:        #0d0f12;
+  --panel:     #15181d;
+  --panel-2:   #1b1f26;
+  --line:      #262b33;
+  --line-soft: #1f242b;
+  --ink:       #e9ecf1;
+  --ink-dim:   #98a0ad;
+  --ink-faint: #6b7480;
+  --accent:    #7cb0ff;
+  --accent-ink:#0a0d12;
+  --warn:      #e2b06a;
+  --ok:        #6fce9a;
+  --radius:    12px;
+  --radius-sm: 8px;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:#f4f6f9; --panel:#fff; --panel-2:#f7f9fc; --line:#e2e7ee; --line-soft:#edf1f6;
+    --ink:#1b2027; --ink-dim:#5c6672; --ink-faint:#8b95a2;
+    --accent:#2f6fd0; --accent-ink:#fff;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2 { margin: 0; font-weight: 600; }
+code { font-size: .88em; background: var(--panel-2); border: 1px solid var(--line-soft);
+       border-radius: 4px; padding: 0 4px; }
+
+/* ---- header ------------------------------------------------------------ */
+.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  flex-wrap: wrap; padding: 16px 22px;
+  border-bottom: 1px solid var(--line); background: var(--panel);
+  position: sticky; top: 0; z-index: 10;
+}
+.brand { display: flex; align-items: center; gap: 13px; }
+.mark { width: 34px; height: 34px; color: var(--accent); flex: none; }
+.top h1 { font-size: 17px; letter-spacing: -.01em; }
+.sub { margin: 1px 0 0; color: var(--ink-dim); font-size: 12.5px; }
+
+.boardpick { display: flex; align-items: center; gap: 9px; }
+.boardpick label { color: var(--ink-dim); font-size: 12.5px; }
+.badge {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
+  padding: 2px 8px; opacity: .9;
+}
+.tabletbtn {
+  text-decoration: none; color: var(--ink-dim); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 6px 12px; font-size: 12.5px; transition: color .15s, border-color .15s;
+}
+.tabletbtn:hover { color: var(--ink); border-color: var(--ink-faint); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-faint);
+       transition: background .25s; flex: none; }
+.dot.on  { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 20%, transparent); }
+.dot.err { background: var(--warn); }
+
+/* ---- controls ---------------------------------------------------------- */
+select, input, button, pre { font: inherit; }
+.selwrap { position: relative; }
+.selwrap::after {
+  content: ""; position: absolute; right: 11px; top: 50%; width: 6px; height: 6px;
+  border-right: 1.6px solid var(--ink-dim); border-bottom: 1.6px solid var(--ink-dim);
+  transform: translateY(-70%) rotate(45deg); pointer-events: none;
+}
+select, input {
+  appearance: none; background: var(--panel-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  padding: 7px 30px 7px 11px;
+}
+input { padding-right: 11px; }
+input.short { width: 8.5rem; }
+select:focus-visible, input:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+button { border: 1px solid var(--line); background: var(--panel-2); color: var(--ink);
+         border-radius: var(--radius-sm); padding: 7px 13px; cursor: pointer;
+         transition: border-color .15s, background .15s, transform .06s; }
+button:hover:not(:disabled) { border-color: var(--ink-faint); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent;
+                 font-weight: 600; }
+button.ghost { background: transparent; }
+
+/* ---- layout ------------------------------------------------------------ */
+main { max-width: 74rem; margin: 0 auto; padding: 22px; display: grid; gap: 18px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line-soft);
+}
+.panel-head h2 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase;
+                 color: var(--ink-dim); }
+.headctl { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.headctl label { color: var(--ink-dim); font-size: 12.5px; }
+.hint { color: var(--ink-faint); font-size: 12.5px; }
+
+.field { padding: 15px 18px; border-bottom: 1px solid var(--line-soft); }
+.field:last-child { border-bottom: 0; }
+.split { display: grid; grid-template-columns: 0.85fr 1.15fr; }
+.split .field { border-right: 1px solid var(--line-soft); }
+.split .field:last-child { border-right: 0; }
+@media (max-width: 760px) { .split { grid-template-columns: 1fr; }
+                            .split .field { border-right: 0; } }
+.flabel { font-size: 12.5px; font-weight: 600; color: var(--ink-dim); margin-bottom: 10px;
+          display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+.fnote { font-weight: 400; color: var(--ink-faint); font-size: 12px; }
+
+/* ---- chips ------------------------------------------------------------- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--line); background: var(--panel-2); color: var(--ink-dim);
+  border-radius: 999px; padding: 6px 13px; font-size: 13.5px; cursor: pointer;
+  transition: all .14s;
+}
+.chips.tight .chip { padding: 5px 10px; font-size: 12.5px; }
+.chip:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-faint); }
+.chip[aria-pressed="true"] {
+  background: var(--accent); border-color: transparent; color: var(--accent-ink);
+  font-weight: 600;
+}
+.chip.busy { opacity: .5; cursor: progress; }
+.chip .n { font-variant-numeric: tabular-nums; }
+.chip.empty { opacity: .5; font-style: italic; }
+
+/* ---- cycle list -------------------------------------------------------- */
+.cyclerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.taglist { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; min-width: 12rem; }
+.tag {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  padding: 3px 9px; font-size: 12.5px; color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tag .i { color: var(--ink-faint); margin-right: 5px; font-size: 11px; }
+.tag.now { border-color: var(--accent); color: var(--ink); }
+.editrow { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.editrow input { flex: 1; min-width: 14rem; }
+
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        flex-wrap: wrap; padding: 13px 18px; background: var(--panel-2);
+        border-radius: 0 0 var(--radius) var(--radius); border-top: 1px solid var(--line-soft); }
+
+/* ---- editor ------------------------------------------------------------ */
+/* Pinned dark in BOTH themes. The editor draws the wall, which is black, and
+ * the card inside it carries its own dark styling because that is what it
+ * needs in Lovelace. Letting this panel go light leaves the card looking
+ * half-converted - dark buttons on a white card - so the panel meets it
+ * instead. */
+#editorpanel {
+  --panel:     #15181d;
+  --panel-2:   #1b1f26;
+  --line:      #262b33;
+  --line-soft: #1f242b;
+  --ink:       #e9ecf1;
+  --ink-dim:   #98a0ad;
+  --ink-faint: #6b7480;
+  --accent:    #7cb0ff;
+  --accent-ink:#0a0d12;
+  background: var(--panel); border-color: var(--line); color: var(--ink);
+}
+.editorhost { padding: 4px 0 0; }
+.note { color: var(--ink-dim); font-size: 13px; padding: 4px 18px 16px; margin: 0; }
+.note b { color: var(--ink); }
+.warn { color: var(--warn); }
+.slim .note { padding-top: 14px; }
+pre { background: var(--panel-2); border: 1px solid var(--line-soft);
+      border-radius: var(--radius-sm); padding: 11px 13px; margin: 0 18px 16px;
+      overflow-x: auto; font-size: 12.5px; color: var(--ink-dim); }
+
+/* ---- dashboard recipes ------------------------------------------------- */
+.recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+           gap: 1px; background: var(--line-soft); border-top: 1px solid var(--line-soft); }
+.recipe { background: var(--panel); padding: 15px 18px 16px; display: flex; flex-direction: column; }
+.recipe h3 { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; }
+.recipe p { margin: 0 0 11px; color: var(--ink-dim); font-size: 12.5px; }
+.recipe pre { margin: 0 0 11px; flex: 1; font-size: 12px; line-height: 1.5; }
+.recipe .copy { align-self: flex-start; padding: 5px 11px; font-size: 12.5px; }
+.recipe .copy.done { color: var(--ok); border-color: var(--ok); }
+
+/* ---- banner ------------------------------------------------------------ */
+.banner { padding: 11px 22px; background: color-mix(in srgb, var(--warn) 14%, var(--bg));
+          border-bottom: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+          color: var(--ink); font-size: 13.5px; }
+.banner b { color: var(--warn); }
+.hidden { display: none !important; }
+
+/* The editor card draws its own controls; give it room without restyling it. */
+clockclock24-editor-card { display: block; }

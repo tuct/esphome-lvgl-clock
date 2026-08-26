@@ -1,9 +1,10 @@
 name: Digital Clock Clock 24
-version: "0.2.1"
+version: "0.3.0"
 slug: digital_clock_clock_24
 description: >-
-  Draw ClockClock 24 motion patterns in the sidebar and write them straight to
-  the wall - no compiling, no flashing.
+  A ClockClock 24 for Home Assistant. Put one on a dashboard or full-screen on
+  a tablet with no hardware at all, and drive the real wall if you built one -
+  modes, cycles and your own motion patterns, sent straight to the master.
 url: https://github.com/tuct/esphome-lvgl-clock
 arch:
   - aarch64

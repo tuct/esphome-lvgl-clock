@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Clock Clock 24</title>
+<style>
+  /* Full bleed and nothing else. This page is meant to be the only thing on a
+     tablet, so it has no chrome to hide: no header, no scrollbars, no theme. */
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: grid; place-items: center; }
+  clockclock24-card { display: block; width: 100%; }
+  /* Controls fade out and stay out. A wall clock that shows a toolbar whenever
+     you walk past it is not a wall clock. */
+  #bar {
+    position: fixed; top: 0; left: 0; right: 0; display: flex; gap: 8px;
+    justify-content: flex-end; padding: 10px 14px;
+    font: 13px system-ui, sans-serif; opacity: 0; transition: opacity .3s;
+    background: linear-gradient(#000c, #0000); pointer-events: none;
+  }
+  body.awake #bar { opacity: 1; pointer-events: auto; }
+  #bar button, #bar a {
+    font: inherit; color: #e9ecf1; background: #ffffff14; text-decoration: none;
+    border: 1px solid #ffffff2e; border-radius: 8px; padding: 6px 12px; cursor: pointer;
+  }
+  #note { position: fixed; bottom: 12px; left: 0; right: 0; text-align: center;
+          color: #ffffff5c; font: 12px system-ui, sans-serif; opacity: 0;
+          transition: opacity .3s; }
+  body.awake #note { opacity: 1; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <button id="full">Full screen</button>
+    <a id="back" href="./">Back</a>
+  </div>
+  <div id="host"></div>
+  <div id="note"></div>
+
+<script src="sim/engine.js"></script>
+<script src="sim/wall.js"></script>
+<script src="sim/pattern.js"></script>
+<script src="cards/card.js"></script>
+<script src="ui/display.js"></script>
+</body>
+</html>

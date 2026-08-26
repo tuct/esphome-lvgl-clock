@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digital Clock Clock 24</title>
+<link rel="stylesheet" href="ui/style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 48 48" aria-hidden="true">
+      <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="2.5" opacity=".35"/>
+      <line x1="24" y1="24" x2="24" y2="9"  stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+      <line x1="24" y1="24" x2="35" y2="30" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <h1>Clock Clock 24</h1>
+      <p class="sub">Twenty-four little analogue clocks, one digital one.</p>
+    </div>
+  </div>
+  <div class="boardpick">
+    <label for="board">Board</label>
+    <div class="selwrap"><select id="board"><option>searching…</option></select></div>
+    <span id="badge" class="badge hidden">master</span>
+    <span id="live" class="dot" title="connection"></span>
+    <a id="tablet" class="tabletbtn" href="display.html?mirror=1" target="_blank"
+       rel="noopener" title="Full-bleed clock — open on a tablet">Full screen</a>
+  </div>
+</header>
+
+<div id="banner" class="banner hidden"></div>
+
+<main>
+  <!-- ---- what the wall is doing ------------------------------------- -->
+  <section class="panel" id="control">
+    <div class="panel-head">
+      <h2>The wall</h2>
+      <span class="hint" id="wallhint"></span>
+    </div>
+
+    <div class="field" id="f-mode">
+      <div class="flabel">Mode<span class="fnote">what the wall is doing right now</span></div>
+      <div class="chips" id="modes"></div>
+    </div>
+
+    <div class="split">
+      <div class="field" id="f-slot">
+        <div class="flabel">Pattern<span class="fnote">which slot <code>pattern</code> draws</span></div>
+        <div class="chips tight" id="slotpick"></div>
+      </div>
+
+      <div class="field" id="f-interval">
+        <div class="flabel">Cycle every<span class="fnote"><code>off</code> holds the mode you pick</span></div>
+        <div class="chips tight" id="intervals"></div>
+      </div>
+    </div>
+
+    <div class="field" id="f-cycle">
+      <div class="flabel">Cycle list<span class="fnote">in order — repeats count</span></div>
+      <div class="cyclerow">
+        <div class="taglist" id="cycletags"></div>
+        <button class="ghost" id="cycleedit">Edit</button>
+      </div>
+      <div class="editrow hidden" id="cycleeditrow">
+        <input id="cycleinput" spellcheck="false" placeholder="wave,wind,spiral">
+        <button class="primary" id="cyclesave">Save</button>
+        <button class="ghost" id="cyclecancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="foot">
+      <button class="ghost" id="reload">Reload patterns from firmware</button>
+      <span class="hint" id="temp"></span>
+    </div>
+  </section>
+
+  <!-- ---- draw a pattern --------------------------------------------- -->
+  <section class="panel" id="editorpanel">
+    <div class="panel-head">
+      <h2>Pattern editor</h2>
+      <div class="headctl">
+        <label for="slot">Write to</label>
+        <div class="selwrap"><select id="slot"></select></div>
+        <label for="pname">Name</label>
+        <input id="pname" class="short" value="pattern" spellcheck="false">
+      </div>
+    </div>
+    <div id="host" class="editorhost"></div>
+    <p class="note">
+      <b>Send to wall</b> writes the string into that slot. The master saves it
+      to flash and pushes it to all seven listeners — nothing is recompiled and
+      nothing is reflashed. <span class="warn">It overwrites what was there.</span>
+    </p>
+  </section>
+
+  <!-- ---- no hardware needed ------------------------------------------ -->
+  <section class="panel" id="cardpanel">
+    <div class="panel-head">
+      <h2>On a dashboard</h2>
+      <span class="hint">the same engine, no hardware required</span>
+    </div>
+    <p class="note" id="cardnote">…</p>
+    <div class="recipes">
+      <article class="recipe">
+        <h3>Widget</h3>
+        <p>A clock in a dashboard column, breaking into a choreography once a minute.</p>
+        <pre>type: custom:clockclock24-card</pre>
+        <button class="ghost copy">Copy</button>
+      </article>
+      <article class="recipe">
+        <h3>Full screen</h3>
+        <p>For a wall tablet, as a dashboard card. Or use <b>Full screen</b> at the
+           top of this page, which needs no dashboard at all.</p>
+        <pre>type: custom:clockclock24-card
+fullscreen: true
+digit_gap: 0
+cycle: [wave, wind, rotating_maze, zipper, mirror_wave]
+cycle_interval: 120</pre>
+        <button class="ghost copy">Copy</button>
+      </article>
+      <article class="recipe">
+        <h3>Editor</h3>
+        <p>This editor, on a dashboard, wired to a slot on the master.</p>
+        <pre id="editoryaml">type: custom:clockclock24-editor-card
+entity: text.cc24_board_d_pattern_1</pre>
+        <button class="ghost copy">Copy</button>
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<script src="sim/engine.js"></script>
+<script src="sim/wall.js"></script>
+<script src="sim/pattern.js"></script>
+<script src="cards/editor-card.js"></script>
+<script src="ui/app.js"></script>
+</body>
+</html>

@@ -26,17 +26,26 @@ is in the sidebar — Ingress, so there is no port to open and no second login.
 
 ## What it does
 
-**Draw a pattern.** The editor is the real firmware engine running in the
-browser: the same choreographies, the same easing, the same 24-clock geometry.
-Pose the hands, set each one turning, and you are judging the movement rather
-than a still.
+**A wall with no hardware.** The clock card puts one in a dashboard, and
+**Full screen** opens a full-bleed version for a tablet — no dashboard, no card
+resource, nothing to configure. Same engine as the firmware.
 
-**Send it.** Pick a Pattern slot on the master and press **Send to wall**. The
-add-on writes the string into that `text.` entity; the master saves it to flash
-and pushes it down the sync bus, and about a second later 24 real analogue
+**Runs the real wall.** Mode, pattern slot, cycle interval and the cycle list, as
+chips rather than rows — and it follows the wall, so a cycle moving the mode on
+shows up without a refresh.
+
+**Draws patterns.** The editor is the real firmware engine running in the
+browser: the same choreographies, the same easing, the same 24-clock geometry.
+Pose the hands, set each one turning, and **Send** — the master saves it to
+flash, pushes it down the sync bus, and about a second later 24 real analogue
 clocks are running it.
 
-**Install the cards.** On start it drops `clockclock24-card.js` into
+**Finds your master by itself.** `board_d.yaml` declares
+`project: name: "tuct.digitalclockclock24"`, which Home Assistant registers as
+device model `digitalclockclock24`. The **Board** dropdown matches on that
+rather than guessing at entity names.
+
+**Installs the cards.** On start it drops `clockclock24-card.js` into
 `/config/www`, so the clock card and the editor card are at `/local/` with
 nothing downloaded by hand.
 

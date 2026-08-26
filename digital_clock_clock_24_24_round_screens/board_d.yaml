@@ -20,6 +20,13 @@
 
 esphome:
   name: cc24-board-d
+  # HA splits project.name on the dot into manufacturer and model, so this
+  # registers as `tuct` / `digitalclockclock24` in the device registry. It is
+  # how the Home Assistant add-on finds the master: a house has plenty of
+  # `text.` entities, and guessing at their names is not identification.
+  project:
+    name: "tuct.digitalclockclock24"
+    version: "1.1"
 
 packages:
   node: !include common.yaml
@@ -283,9 +290,10 @@ select:
     lambda: |-
       uint32_t s = id(dc_a).get_cycle_interval();
       if (s == 0) return std::string("off");
-      char buf[12];
-      snprintf(buf, sizeof(buf), "%u min", (unsigned) (s / 60));
-      return std::string(buf);
+      // to_string rather than a fixed buffer: a uint32_t is up to ten digits,
+      // so "%u min" into char[12] is a truncation warning even though nothing
+      // above 60 is ever offered. No buffer, nothing to size wrong.
+      return std::to_string(s / 60) + " min";
     set_action:
       # atoi("off") is 0, which is exactly what "no cycling" is - but spell it
       # out rather than leaning on that.
