@@ -138,7 +138,12 @@ fit.
 carrier presses onto the three headers of its row; then one cable per hop, all
 the way along, as in [Wiring](#wiring):
 
-<img src="./images/screens_and_pcb_in_case.jpg" width="100%">
+<img src="./images/screens_and_pcb_in_case.jpeg" width="100%">
+
+*↑ All eight carriers seated and chained, before the face plate goes on. One
+MP1584EN is fitted, on the middle board — the other seven footprints are empty,
+which is [the whole point of feeding the middle](./TECHNICAL.md#how-many-regulators-and-where).
+The scale underneath reads **730 g**, the finished weight.*
 
 **Note this is PCB v1.0.** Its pass-through is a pair of **3-pin** headers, so
 the chain is two runs — the red/blue pairs carrying `GND`, `+5 V` and `UART`,
@@ -159,15 +164,6 @@ fitted** for the whole wall — the other seven footprints are empty, exactly as
 One 4-way cable per hop, and that is the entire harness. `CN1` and `CN2` carry
 the same four nets, so each board loops straight through to the next — power
 and the sync bus in one run:
-
-<img src="./images/screens_and_pcb_in_case.jpg" width="100%">
-
-*↑ All eight carriers seated and chained, before the face plate goes on. The
-yellow run is the 3.3 V rail hopping board to board; the red/blue pairs are the
-5 V and sync legs of the same cables. One MP1584EN is fitted, on the middle
-board — the other seven footprints are empty, which is
-[the whole point of feeding the middle](./TECHNICAL.md#how-many-regulators-and-where).
-The scale underneath reads **730 g**, the finished weight.*
 
 ```
    4-pin XH chain cable:  +3.3 V . GND . +5 V . UART     7 cables, 8 boards
