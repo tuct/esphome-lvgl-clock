@@ -1,10 +1,16 @@
-# ClockClock 24 — mode sandbox
+# Writing a choreography in code
 
 A browser port of the `clockclock24` engine from
 [`components/lvgl_clock/lvgl_clock.cpp`](../../components/lvgl_clock/lvgl_clock.cpp),
 for designing choreographies without a flash cycle. Eight boards, three panels
 each, a two-minute build and a wall you have to walk over to — the loop is slow
 enough that a new mode takes an evening. Here it takes a reload.
+
+> **This page is for adding a mode to the firmware.** If you want to make the
+> wall do something new *without* touching C++, you want a **pattern** instead —
+> data rather than code, drawn in the
+> [pattern editor](../../homeassistant/DOCS.md#the-pattern-editor) and sent to
+> the wall with nothing recompiled. See [Modes and patterns](../../modes.md).
 
 **Open [`index.html`](./index.html) in a browser.** No server, no build step, no
 dependencies — it runs straight off the filesystem.
@@ -404,214 +410,26 @@ The lags are written in **degrees** and divided by the rate, not stored as
 delays — so the look is tuned by the angle you want between neighbours, and
 stays correct when `MIRROR_TURN_S` changes.
 
-## `pattern` — Motion Pattern Editor Mode
+## `pattern` — patterns are data, not a choreography
 
-A mode with no code of its own: **24 per-clock motion specs you build in the
-UI**. It is listed as **Motion Pattern Editor Mode** and gets the full width of
-the mode grid, because it is not a choreography like the others. Selecting it
-turns on Edit and Play, and a *Pattern* card appears —
-the card is hidden otherwise, since every control writes into the selection and
-there is nothing selected when you are not editing.
-
-It carries no `*` marker: an editor is not something that could ever be ported
-to the firmware, so the note would be telling you nothing.
-
-Each clock carries:
-
-| | |
-| --- | --- |
-| **Home pose** | What you configured. Drag the hands on the wall — in `pattern` the drag writes into the spec, not just the frame, so it sticks |
-| **Direction**, per hand | `←` counter-clockwise · `—` still · `→` clockwise |
-| **Speed**, per hand | `fixed` 0…1, or `same as…` a neighbour ± an offset |
+`pattern` is the one mode with no code of its own: **24 per-clock poses and
+speeds**, authored in a UI and carried to the wall as one line of text. Every
+hand is `pose + direction × speed × rate × t`, which is continuous for any data
+whatsoever — so a pattern cannot make a hand jump however badly it was drawn.
+That is why this mode can safely take its input from a text field.
 
 Speed 1.0 is `PATTERN_MAX_RATE` = 90 °/s, one turn in 4 s.
 
-### Editing while it moves
+**The editor lives in the Home Assistant add-on**, wired to a slot on the
+master: draw it, watch it in this same engine, press **Send**, and the wall is
+running it a second later. See
+[the pattern editor](../../homeassistant/DOCS.md#the-pattern-editor) — that page
+also covers relative speeds, the squared sliders, and why editing a speed does
+not make the hands jump.
 
-Edit mode normally freezes the wall so a posed hand stays where you put it. The
-pattern editor is the exception — its controls are all about motion, and you
-cannot judge a speed you cannot see — so **`run motion while editing`** keeps
-the animation going. It is on by default and applies only in `pattern`.
-
-That needs one correction to work. With the motion running, storing a dragged
-angle straight into the pose would snap the hand to wherever the motion had
-carried it: you would be aiming at a moving target. So the pose is stored as
-**where the hand is now, minus how far the motion has carried it** —
-
-```js
-setPoseAt(i, hand, angle, ts)   //  a = angle − dir · speed · RATE · ts
-```
-
-— and the hand lands exactly where you dropped it, then carries on. `Pose from
-wall` applies the same correction, so capturing a moving wall does not bake the
-offset in twice.
-
-### Why editing a speed does not jump
-
-The same maths bites harder on the motion controls. An angle is measured from
-`t = 0`, so **changing a speed retroactively rewrites the whole history**: a
-clock that has been running 10 s at 0.5 leaps 90° the instant you nudge it to
-0.8. And because speeds can be relative, one edit moves clocks you never
-touched.
-
-So every motion edit goes through `rebaseAll()`: remember where all 48 hands
-are, apply the change, then re-anchor all 24 poses so they are still there. The
-hands carry on from where they were, at the new speed — measured, 0° of jump
-against 90° without it.
-
-It anchors to the **pattern's own output**, not to `wall.cur`. `wall.cur` is the
-pattern *plus* whatever the entry blend or the settle is still adding on top, so
-anchoring to that bakes the blend into the pose and the wall snaps by however
-much the blend was contributing the moment it finishes — **135°**, measured, if
-you touch a control during the fade-in. Toggling `run motion while editing` rebases too, so it
-resumes from where the hands are rather than from where they would have been
-had it never stopped.
-
-It is an analogue clock even while you are editing it.
-
-### Relative speed is the point
-
-`same as… left − 0.12` means *take my left neighbour's speed for this hand and
-subtract 0.12*. Set one clock going and the rest of the wall derives itself:
-
-```
-row 0 resolved speeds:  1.00  0.88  0.76  0.64  0.52  0.40  0.28  0.16
-```
-
-That is one fixed clock at 1.0 and seven relative ones, and it is how you get a
-gradient without typing eight numbers. Neighbours are `left` / `right` / `up` /
-`down`; a reference that runs off the edge of the wall resolves to 0.
-
-**The offset is per hop, and it compounds.** Each clock adds it to its
-neighbour's *resolved* speed, so across an 8-wide wall the total is seven times
-what you set — which is why a value that looks small runs the far end down to a
-standstill:
-
-```
-offset -0.05 ->  1.00 0.95 0.90 0.85 0.80 0.75 0.70 0.65
-offset -0.10 ->  1.00 0.90 0.80 0.70 0.60 0.50 0.40 0.30
-offset -0.20 ->  1.00 0.80 0.60 0.40 0.20 0.00 0.00 0.00
-offset -0.30 ->  1.00 0.70 0.40 0.10 0.00 0.00 0.00 0.00
-```
-
-The usable range for a gradient that spans the wall is therefore about
-**±1/7 ≈ ±0.14**, which is why the slider does not span ±1 — at that range the
-entire useful zone was a few pixels of travel.
-
-### The speed sliders are squared
-
-`speed = position²`, and the offset likewise with its sign kept. A linear
-0…1 slider spends nine tenths of its travel above 9 °/s — the range you rarely
-want — and gives the slow end, where a pattern actually reads, almost nothing:
-
-| slider | speed |
-| --- | --- |
-| 0.10 | 0.9 °/s |
-| 0.20 | 3.6 °/s |
-| 0.30 | 8.1 °/s |
-| 0.50 | 22.5 °/s |
-| 1.00 | 90 °/s |
-
-Half the travel now covers 0–22 °/s. Both readouts are in **°/s** rather than a
-0…1 fraction — with a decimal below 10 °/s, where a whole degree is a visible
-difference — so the curve is invisible in use: you aim at the number you want.
-
-**Chains can loop** — A takes B's speed and B takes A's. That resolves to 0 and
-stops rather than recursing forever, so a mistake costs you a still clock, not
-a hung tab.
-
-### Copying
-
-**Copy** takes the selected clock's pose *and* motion; then **Paste** to the
-selection, **its row**, **its column**, or **all 24**. Building a wall usually
-means posing one clock, giving it the motion you want, and pasting it out —
-then going back to the few that differ.
-
-**Shift-click selects more than one, and every edit applies to all of them** —
-directions, both speeds, dragging a hand, and Paste. Shift never starts a drag:
-you are choosing targets, not posing.
-
-The **primary** clock keeps a brighter ring; the rest of the selection is
-dimmer. The primary is only which clock the controls *read* their current
-values from — there has to be one, or a selection whose members disagree could
-not display anything. Writes always go to the whole set. Shift-clicking a
-selected clock removes it again, unless it is the last one left.
-
-Dragging with several selected puts **the same absolute angle** on all of them,
-which is how you set a row to a common pose in one drag.
-
-**The clipboard is never cleared.** Copy once, then paste as many times and to
-as many selections as you like; the note under the buttons says it is still
-holding it.
-
-### Save and load
-
-Two buttons, one box, under **Save / load** in the Pattern column:
-
-| | |
-| --- | --- |
-| **Export** | The whole configuration — home pose *and* motion, per clock — as JSON. Written into the box and onto the clipboard |
-| **Load** | Reads a configuration back out of that box. Press it once to open an empty box, paste, press again |
-| **Copy for ESPHome** | The same pattern **packed** for a Home Assistant text entity — `<name>:<base64>`, about 164 characters. Paste it into `Pattern 1…8` on the master and the whole wall has it within a second, with nothing reflashed |
-
-
-Export/Load round-trips: `Export`, `reset`, `Load` gives back the same poses,
-directions and speeds, relative references included.
-
-Loading **validates and coerces rather than trusts** — this is text a human has
-been editing, and a bad field should cost you one wrong clock, not a wall of
-`NaN` that silently draws nothing. Angles are wrapped, speeds clamped,
-directions reduced to −1/0/+1, an unknown neighbour name falls back to `left`,
-and the whole thing is refused with a readable reason if the shape is wrong:
-
-```
-"not json"            -> not valid JSON — JSON Parse error: …
-"{}"                  -> no `clocks` array in there
-'{"clocks":[1,2,3]}'  -> expected 24 clocks, found 3
-```
-
-A load re-cuts every anchor from the loaded poses, so the wall starts from what
-you saved rather than from wherever the motion clock happens to be.
-
-### The ESPHome form
-
-JSON is ~5 kB; a Home Assistant text entity holds 255 characters. **Copy for
-ESPHome** packs the same pattern into five bytes per clock — angle in 1.5°
-steps, direction in two bits, speed as a percent — so 120 bytes, 164 characters
-of base64. The 1.5° step is ten times finer than the 15° snap you author at, so
-nothing is lost.
-
-Relative speeds are **resolved first**: the firmware only ever sees numbers.
-The encoder mirrors `PatternStore::to_text()` in the component byte for byte,
-which is the same discipline as the rest of this sandbox — one implementation,
-translated, not two that drift.
-
-### Home pose vs runtime anchor
-
-Each clock stores **two** poses, and the difference matters:
-
-| | Changed by | |
-| --- | --- | --- |
-| **home** | dragging a hand · `Pose from wall` | What you configured. Nothing else touches it |
-| **anchor** | every speed / direction edit, via `rebaseAll` | Where the motion is measured from, re-cut constantly so the hands never jump |
-
-If there were only one pose, the thing you configured would be quietly
-overwritten the first time you nudged a slider, and there would be nothing left
-to go back to. Verified: configure 90°, run 8 s, edit the speed — the hand stays
-put, the anchor moves to 162°, and **home is still 90°**.
-
-**Back to pose** re-cuts every anchor from home, so the hands land on the poses
-you chose. **Pose from wall** is its opposite: take wherever the hands have got
-to and make *that* home.
-
-**Back to pose works whether or not the wall is moving.** It re-cuts every
-anchor from home, so the hands land on what you configured and carry on from
-there — a resync mid-run, not a stop. **Pose from wall** is disabled while the
-motion runs, because it captures whatever is on screen and against a moving
-wall that is whatever instant you happened to click.
-
-With the motion off the loop is not ticking, so both push the pattern into the
-frame by hand rather than waiting for a redraw that will not come.
+> A standalone editor that needs no Home Assistant is planned. Until it lands,
+> the sandbox here is for **writing choreographies in code** — the sections
+> above — rather than for drawing patterns.
 
 ## `test` — the scratch bench
 

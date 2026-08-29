@@ -27,8 +27,8 @@ This is the small sibling of
 which builds the same clock out of 24 individual round panels on 8 boards. The
 two share a pin map, a carrier-PCB family and all of the sync machinery — that
 README is the fuller reference for the
-[protocol](../digital_clock_clock_24_24_round_screens/README.md#time-sync) and
-[bus debugging](../digital_clock_clock_24_24_round_screens/README.md#debugging-the-bus).
+[protocol](../digital_clock_clock_24_24_round_screens/TECHNICAL.md#time-sync) and
+[bus debugging](../digital_clock_clock_24_24_round_screens/TECHNICAL.md#debugging-the-bus).
 
 ### Four screens vs twenty-four
 
@@ -228,7 +228,7 @@ slave sets its clock and mirrors the mode. Every field after `<mode>` is
 optional, so the line has grown over time (temperature, pattern slot,
 movement, sweep length, choreography speed) without ever breaking a board
 running older firmware. The
-[protocol section there](../digital_clock_clock_24_24_round_screens/README.md#time-sync)
+[protocol section there](../digital_clock_clock_24_24_round_screens/TECHNICAL.md#time-sync)
 covers it in full. Two things that matter when wiring this one up:
 
 - **Only the master runs the boot-phase `interval:`** (spin → birds → time).
@@ -321,7 +321,7 @@ follows whatever it broadcasts.
 ## Power
 
 Not measured on this build. The [24-round-screen
-version](../digital_clock_clock_24_24_round_screens/README.md#power) draws
+version](../digital_clock_clock_24_24_round_screens/TECHNICAL.md#power) draws
 ~150 mA per board for three 240×240 panels; two 320×240 panels are a similar
 total area, so expect the same order and **measure before sizing a supply**.
 Size for inrush rather than the average — panels striking and the master

@@ -159,9 +159,21 @@ whole selection.
 ### Hands
 
 Direction and rate per hand. The slider is in **percent, in 0.5 steps**, and
-squared — a linear travel spends nine tenths of itself above 9°/s, and the slow
-end is where a pattern reads. The readout gives both the percentage and the
-resulting °/s, so a value you liked is one you can dial back to.
+**squared** — a linear travel spends nine tenths of itself above 9°/s, which is
+the range you rarely want, and gives the slow end, where a pattern actually
+reads, almost nothing:
+
+| slider | speed |
+| --- | --- |
+| 10% | 0.9 °/s |
+| 20% | 3.6 °/s |
+| 30% | 8.1 °/s |
+| 50% | 22.5 °/s |
+| 100% | 90 °/s |
+
+Half the travel now covers 0–22 °/s. The readout gives both the percentage and
+the resulting °/s, so the curve is invisible in use — you aim at the number you
+want, and a value you liked is one you can dial back to.
 
 **Back to pose** puts every hand on the wall back on the pose you configured —
 **all 24, whatever is selected**. It throws nothing away, so there is nothing to
@@ -172,6 +184,67 @@ somewhere you did not mean and you want to see the shape you drew again.
 pose, so anything you like the look of mid-motion can become a starting point.
 That one **does** overwrite what you configured, so it takes the **selection**
 only — doing it to all 24 on a mis-click is how you lose an afternoon's work.
+
+### Relative speed is the point
+
+A speed is either a **fixed** rate or **`same as…`** a neighbour, plus or minus
+an offset. `same as… left − 0.12` means *take my left neighbour's speed for this
+hand and subtract 0.12*. Set one clock going and the rest of the wall derives
+itself:
+
+```
+row 0 resolved speeds:  1.00  0.88  0.76  0.64  0.52  0.40  0.28  0.16
+```
+
+That is one fixed clock at 1.0 and seven relative ones, and it is how you get a
+gradient without typing eight numbers. Neighbours are `left` / `right` / `up` /
+`down`; a reference that runs off the edge of the wall resolves to 0.
+
+**The offset is per hop, and it compounds.** Each clock adds it to its
+neighbour's *resolved* speed, so across an 8-wide wall the total is seven times
+what you set — which is why a value that looks small runs the far end down to a
+standstill:
+
+```
+offset -0.05 ->  1.00 0.95 0.90 0.85 0.80 0.75 0.70 0.65
+offset -0.10 ->  1.00 0.90 0.80 0.70 0.60 0.50 0.40 0.30
+offset -0.20 ->  1.00 0.80 0.60 0.40 0.20 0.00 0.00 0.00
+```
+
+The usable range for a gradient that spans the wall is therefore about
+**±1/7 ≈ ±0.14**, which is why the slider does not span the full range.
+
+**Chains can loop** — A takes B's speed and B takes A's. That resolves to 0 and
+stops rather than recursing forever, so a mistake costs you a still clock, not
+a hung tab.
+
+### Why editing a speed does not jump
+
+An angle is measured from `t = 0`, so **changing a speed retroactively rewrites
+the whole history**: a clock that has been running 10 s at 0.5 leaps 90° the
+instant you nudge it to 0.8. And because speeds can be relative, one edit moves
+clocks you never touched.
+
+So every motion edit remembers where all 48 hands are, applies the change, then
+re-anchors all 24 poses so they are still there. The hands carry on from where
+they were, at the new speed — 0° of jump against 90° without it.
+
+It is an analogue clock even while you are editing it.
+
+### Pose vs anchor
+
+Each clock stores **two** poses, and the difference is what makes the two pose
+buttons meaningful:
+
+| | Changed by | |
+| --- | --- | --- |
+| **pose** | dragging a hand · **Wall to pose** | What you configured. Nothing else touches it |
+| **anchor** | every speed or direction edit | Where the motion is measured from, re-cut constantly so the hands never jump |
+
+If there were only one, the thing you configured would be quietly overwritten
+the first time you nudged a slider, and there would be nothing left to go back
+to. **Back to pose** re-cuts every anchor from the pose; **Wall to pose** takes
+wherever the hands have got to and makes *that* the pose.
 
 ### Copy
 

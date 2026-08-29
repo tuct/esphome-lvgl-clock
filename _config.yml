@@ -60,20 +60,39 @@ defaults:
     values: { layout: default }
   # The front page gets a layout that injects the live demo - see
   # _layouts/home.html for why it is not in README.md itself.
+  # The order is by PURPOSE, not by what happens to exist: what you want to do
+  # first (run one), then what you want to do next (make it do something new),
+  # then reference. just-the-docs has no heading-only nav groups, so the purpose
+  # has to live in the page titles.
   - scope: { path: "README.md" }
     values: { title: "Home", nav_order: 1, layout: home }
   - scope: { path: "modes.md" }
-    values: { title: "Modes", nav_order: 2 }
+    values: { title: "What it does", nav_order: 2 }
+  # Before the builds on purpose: it is the path that costs nothing and needs no
+  # hardware, and it is how most people will meet the project.
+  - scope: { path: "screens.md" }
+    values: { title: "Run it on a screen", nav_order: 3 }
+  - scope: { path: "homeassistant/README.md" }
+    values: { title: "Control it from Home Assistant", nav_order: 4, has_children: true }
+  - scope: { path: "homeassistant/DOCS.md" }
+    values: { title: "Add-on reference", parent: "Control it from Home Assistant", nav_order: 1 }
+  # The build guide is three pages: what it is and how to configure it, the
+  # assembly sequence, and the reference material underneath. One 1300-line page
+  # served none of those three readers well.
   - scope: { path: "digital_clock_clock_24_24_round_screens/README.md" }
-    values: { title: "Build: 24 round screens", nav_order: 3, has_children: true }
+    values: { title: "Build it: 24 round screens", nav_order: 5, has_children: true }
+  - scope: { path: "digital_clock_clock_24_24_round_screens/BUILD.md" }
+    values: { title: "Assembly, wiring and flashing", parent: "Build it: 24 round screens", nav_order: 1 }
+  - scope: { path: "digital_clock_clock_24_24_round_screens/TECHNICAL.md" }
+    values: { title: "Technical details", parent: "Build it: 24 round screens", nav_order: 2 }
   - scope: { path: "digital_clock_clock_24_24_round_screens/PROTOTYPE.md" }
-    values: { title: "First prototype", parent: "Build: 24 round screens", nav_order: 1 }
+    values: { title: "First prototype", parent: "Build it: 24 round screens", nav_order: 3 }
   - scope: { path: "digital_clock_clock_24_4_screens/README.md" }
-    values: { title: "Build: 4 screens", nav_order: 4 }
+    values: { title: "Build it: 4 screens", nav_order: 6 }
   # Examples and gifgen are about the component, not about the clock - they sit
   # under it rather than as siblings of the builds.
   - scope: { path: "components/lvgl_clock/README.md" }
-    values: { title: "The component", nav_order: 5, has_children: true }
+    values: { title: "The component", nav_order: 7, has_children: true }
   - scope: { path: "examples/README.md" }
     values: { title: "Examples", parent: "The component", nav_order: 1 }
   - scope: { path: "tools/gifgen/README.md" }
@@ -81,11 +100,7 @@ defaults:
   - scope: { path: "images/hw/README.md" }
     values: { title: "Hardware photos", parent: "The component", nav_order: 3 }
   - scope: { path: "tools/clockclock24-sim/README.md" }
-    values: { title: "Sandbox & pattern editor", nav_order: 6 }
-  - scope: { path: "homeassistant/README.md" }
-    values: { title: "Home Assistant", nav_order: 7, has_children: true }
-  - scope: { path: "homeassistant/DOCS.md" }
-    values: { title: "Add-on and cards", parent: "Home Assistant", nav_order: 1 }
+    values: { title: "Writing a choreography in code", nav_order: 8 }
 
 # The sandbox is a static app and is copied through untouched: Jekyll only
 # processes files that HAVE front matter, and its .html and .js have none.

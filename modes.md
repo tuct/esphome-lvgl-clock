@@ -1,4 +1,4 @@
-# Modes — what the wall does between the minutes
+# What it does — modes and patterns
 
 A ClockClock 24 spends most of its time telling the time. The rest of it is
 **choreographies**: the 48 hands doing something that is not a clock, for 35
@@ -9,9 +9,9 @@ Everything here is driven by [`cycle_modes:`](./components/lvgl_clock/README.md#
 — a list walked in order, one window per interval, opening at `:10` past.
 Repeats count: listing a mode twice gives it twice the slots.
 
-> **Try them first.** [**Open the sandbox →**](./tools/clockclock24-sim/) It is
-> the same engine as the firmware, running in your browser — no flashing, no
-> hardware.
+> **Try them first.** [**Open the sandbox →**](https://tuct.github.io/esphome-lvgl-clock/)
+> It is the same engine as the firmware, running in your browser — no flashing,
+> no hardware.
 
 ## The built-in choreographies
 
@@ -32,33 +32,40 @@ Repeats count: listing a mode twice gives it twice the slots.
 `time` is what every window returns to. `demo` is a bring-up aid — a fake minute
 every 5 s — and is deliberately not allowed in a cycle list.
 
-## Two ways to make your own
+## Patterns — choreographies that are data
 
-### 1. Draw one — no code, no reflash of the wall
+The eleven above are code, compiled into all eight boards. A **pattern** is the
+same idea as data: 24 per-clock **poses** and **motions** — a direction per hand
+and a speed — that the wall reads out of a text field. Every hand is
+`pose + direction × speed × rate × t`, which is continuous whatever the numbers
+are, so a pattern cannot make a hand jump however badly it is drawn.
 
-[**The Motion Pattern Editor →**](./tools/clockclock24-sim/)
+That is what lets it skip the whole firmware loop. A pattern is not compiled and
+not flashed; it is **one line of text**, and the master takes it over the
+network at runtime.
 
-Pick **Motion Pattern Editor Mode**, then for each clock set a **pose** (drag
-the hands) and a **motion**: a direction per hand and a speed. A speed can be
-fixed, or *"the same as my neighbour, ± a bit"* — so a gradient across the whole
-wall is one number instead of eight:
+### Draw one
+
+[**The pattern editor →**](./homeassistant/DOCS.md#the-pattern-editor), in the
+Home Assistant add-on. Pose each clock by dragging its hands, give each hand a
+direction and a speed, then press **Send** — the master saves it to flash,
+pushes it down the sync bus, and 24 real clocks are running it a second later.
+
+A speed can be fixed, or *"the same as my neighbour, ± a bit"*, so a gradient
+across the whole wall is one number instead of eight:
 
 ```
 row 0 resolved speeds:  1.00  0.88  0.76  0.64  0.52  0.40  0.28  0.16
 ```
 
-Shift-click to select several clocks and every edit applies to all of them;
-copy one clock to its row, its column or all 24.
+Eight patterns live on the master at a time, under names you choose, and those
+names go straight into a cycle list beside `wave` and `spiral`.
 
-Then **Copy for ESPHome** and paste the string into a `Pattern` text entity in
-Home Assistant. The master pushes it down the sync bus and the whole wall has
-it within a second — **nothing is reflashed**, not even the master.
+That **nothing is reflashed, not even the master** is the point of the whole
+master/slave split: the seven listeners carry no network stack precisely so they
+never need one, and patterns are the thing you actually iterate on.
 
-That is the point of the whole master/slave split: the seven listeners carry no
-network stack precisely so they never need one, and patterns are the thing you
-actually iterate on.
-
-### 2. Write one — a choreography in code
+### Write one — a choreography in code
 
 A choreography is a function of time, not a table of frames:
 
@@ -103,7 +110,8 @@ A normal sweep is a few degrees per frame. A jump is 90–180.
 
 ## Where to go next
 
-- [**Build the 24-screen wall**](./digital_clock_clock_24_24_round_screens/) — BOM, PCB, wiring, assembly
-- [**The cheap 4-screen version**](./digital_clock_clock_24_4_screens/)
-- [**The component**](./components/lvgl_clock/) — every option, all five clock styles
-- [**The sandbox**](./tools/clockclock24-sim/) — run it now
+- [**Run it on a screen**](./screens.md) — tablet, dashboard, any browser. No hardware
+- [**Build the 24-screen wall**](./digital_clock_clock_24_24_round_screens/README.md) — BOM, PCB, wiring, assembly
+- [**The cheap 4-screen version**](./digital_clock_clock_24_4_screens/README.md)
+- [**Control it from Home Assistant**](./homeassistant/README.md) — and draw patterns
+- [**The component**](./components/lvgl_clock/README.md) — every option, all five clock styles
