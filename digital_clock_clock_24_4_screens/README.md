@@ -195,6 +195,36 @@ pin map:
 | `SDO_MISO` | D9 | `miso_pin` |
 | `SDA_MOSI` | D10 | `mosi_pin` |
 
+## The case
+
+Two printed parts, in
+[`3dprinting/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_4_screens/3dprinting).
+
+| File | |
+|---|---|
+| `ClockClock24_4screen_Body.obj` | The body: the four panel cutouts and the shell |
+| `ClockClock24_4screens_Blocker.obj` | A **light blocker** that sits inside the body |
+| `ClockClock24_4Screens.f3d` | Fusion 360 source, if you want to change it |
+
+**The blocker is why there are two parts.** The panels are backlit, and a case
+printed in a light colour glows: the light travels through the wall and comes
+out around the cutouts and at the seams. So the blocker goes **inside** and is
+**printed in black**, which lets you have a white case — or any colour — without
+the glow. If you are printing the whole thing in black anyway, it is still worth
+fitting; thin black walls leak too.
+
+**Print it opaque.** For both parts, and it matters more than strength:
+
+- **Enough top and bottom layers to fully close the surface** — more than the
+  slicer's default. A single thin spot reads as a bright patch.
+- **Solid infill for the walls.** The vertical faces are thin, and sparse infill
+  there leaks light between the panels.
+
+Otherwise an undemanding print: no supports, nothing structural, any material.
+
+> `.obj` rather than `.stl` — PrusaSlicer, OrcaSlicer and Cura all import it
+> directly.
+
 ## Which digit is which
 
 ```
@@ -331,6 +361,7 @@ associating to Wi-Fi both land at switch-on.
 ## Rough BOM
 
 - 2 × Custom PCB (see [`PCB/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_4_screens/PCB))
+- 1 × [printed case](#the-case) — body plus the black light blocker
 - 2 × Seeed XIAO ESP32-S3
 - 2 × MP1584EN module
 - 4 × 4.0″ 320×240 ILI9342 SPI panel, 14-pin header

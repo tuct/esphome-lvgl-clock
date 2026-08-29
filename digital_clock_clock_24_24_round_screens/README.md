@@ -119,10 +119,33 @@ Three things that are *not* eight-off, and are easy to over-order:
 
 ### 3D-printed frame
 
-The wall needs a frame: a face plate with 24 round cutouts, and something
-behind it to hold the eight carrier boards at the right spacing.
+One printed part: a face plate with 24 round cutouts and a tray behind it that
+holds the eight carrier boards at the right spacing. Files are in
+[`3dprinting/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_24_round_screens/3dprinting).
 
-*Print settings, STLs and assembly notes to follow.*
+| File | |
+|---|---|
+| `ClockClock24_full.obj` | The case in **one piece**. Needs a **Prusa XL-sized bed or bigger** |
+| `ClockClock24_a.obj` + `ClockClock24_b.obj` | The same case **split in two**, for a normal printer. Print both and join |
+| `clockclock24.f3d` | Fusion 360 source, if you want to change it |
+
+**Print it opaque.** This is the one setting that matters, and it is not about
+strength: the panels are backlit, and a wall that lets light through the case
+glows around every cutout instead of showing 24 clean discs on black. So:
+
+- **Enough top and bottom layers to fully close the surface** — more than the
+  slicer's default. A single thin spot is a visible bright patch.
+- **Solid infill for the walls.** The vertical faces between the cutouts are
+  thin, and sparse infill there leaks light between neighbouring panels.
+
+Dark filament helps but does not replace either of those — black PLA printed
+thin still glows.
+
+Beyond that it is an undemanding print: no supports, no bridging worth worrying
+about, and nothing structural. Any material you like.
+
+> `.obj` rather than `.stl` — PrusaSlicer, OrcaSlicer and Cura all import it
+> directly.
 
 ## How to build
 
