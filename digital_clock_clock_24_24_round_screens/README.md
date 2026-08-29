@@ -182,7 +182,7 @@ the wall just tells the time.
 | `rotating_maze` | A chevron field turning, rows counter-rotating, easing almost to a stop on each aligned figure |
 | `zipper` | A front runs across a field of diagonals, unzipping each column into mirrored chevrons |
 | `mirror_wave` | Vertical strokes scissor open, mirrored about the wall's centre, spreading outwards from the middle |
-| `pattern` | Plays a pattern from [`patterns/`](./patterns) — authored in the sim, pushed to every board over the bus |
+| `pattern` | Plays a pattern from [`patterns/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_24_round_screens/patterns) — authored in the sim, pushed to every board over the bus |
 | `love` | Spells **LOVE** across the four digits |
 | `temp` | The temperature, as `-9`…`99` plus `°C` |
 | `rotate_left` | A plain continuous rotation |
@@ -413,7 +413,7 @@ saves it to flash, pushes it down the bus, and the wall is running it a second
 later, with nothing recompiled and nothing reflashed, not even the master. See
 [the editor](../homeassistant/DOCS.md#the-pattern-editor).
 
-The [`patterns/`](./patterns) folder is the other route: a `<name>.json` per
+The [`patterns/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_24_round_screens/patterns) folder is the other route: a `<name>.json` per
 pattern, baked into the master at compile time and pushed to the seven
 listeners 30 s after boot. That is where a pattern you want in the firmware
 itself belongs — `Reload patterns from firmware` goes back to exactly this set.

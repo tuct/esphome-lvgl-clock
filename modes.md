@@ -86,7 +86,7 @@ function tickMyMode(cur, t, { modeSpeed }) {
 Prototype it in the sandbox, watch it, tune it — then transcribe it into
 [`lvgl_clock.cpp`](./components/lvgl_clock/README.md). The sandbox is a
 deliberate line-for-line port of the firmware, so the translation is syntax
-only. Full guidance in the [sandbox README](./tools/clockclock24-sim/README.md).
+only. Full guidance in the [sandbox README](./tools/clockclock24-sim/writing-a-mode.md).
 
 ## The one rule
 

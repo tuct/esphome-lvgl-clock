@@ -90,3 +90,8 @@
   // Push the link to the far end, away from the controls.
   a { margin-left: auto; }
 }
+
+// A block that belongs in the repo's README view but not on the site: the
+// "open the live site" banner, which on the site is an invitation to the page
+// you are already reading. GitHub applies none of this CSS, so it shows there.
+.site-only-hide { display: none; }

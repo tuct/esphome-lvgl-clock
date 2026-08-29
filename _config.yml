@@ -99,16 +99,21 @@ defaults:
     values: { title: "gifgen", parent: "The component", nav_order: 2 }
   - scope: { path: "images/hw/README.md" }
     values: { title: "Hardware photos", parent: "The component", nav_order: 3 }
-  - scope: { path: "tools/clockclock24-sim/README.md" }
+  - scope: { path: "tools/clockclock24-sim/writing-a-mode.md" }
     values: { title: "Writing a choreography in code", nav_order: 8 }
 
 # The sandbox is a static app and is copied through untouched: Jekyll only
 # processes files that HAVE front matter, and its .html and .js have none.
 #
-# tools/clockclock24-sim/ therefore contains both an index.html (the app) and a
-# README.md. jekyll-readme-index leaves a directory alone when it already has an
-# index, so the app wins the folder URL and its README lands at README.html.
-# That is the right way round - a link to the sandbox should run it.
+# tools/clockclock24-sim/ contains index.html (the app), so the app wins the
+# folder URL - which is the right way round, a link to the editor should run it.
+#
+# Its long-form doc is `writing-a-mode.md`, NOT a README, and that name is
+# load-bearing. jekyll-readme-index skips a directory that already has an index,
+# and a README it skips is never made into a page at all: it stays a static file
+# and is served as raw text/markdown, missing from the nav entirely. Measured on
+# the live site - /tools/clockclock24-sim/README.html was a 404 and README.md
+# came back as text/markdown. Any other filename is an ordinary page.
 
 exclude:
   # The add-on's payload is a STAGED COPY of the sandbox and the cards (Docker

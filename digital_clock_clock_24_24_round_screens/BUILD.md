@@ -143,7 +143,7 @@ the way along, as in [Wiring](#wiring):
 **Note this is PCB v1.0.** Its pass-through is a pair of **3-pin** headers, so
 the chain is two runs — the red/blue pairs carrying `GND`, `+5 V` and `UART`,
 and the separate yellow lead carrying `+3.3 V` the length of the wall. **v1.1,
-the revision in [`PCB/`](./PCB), replaces both with a single 4-pin XH per
+the revision in [`PCB/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_24_round_screens/PCB), replaces both with a single 4-pin XH per
 hop**, so a finished board of that revision has one cable in and one out and
 nothing else.
 

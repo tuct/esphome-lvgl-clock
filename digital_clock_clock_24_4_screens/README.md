@@ -121,7 +121,7 @@ never contends either.
 
 A carrier board that takes a XIAO ESP32-S3, breaks out two 14-pin display
 headers, regulates the panel supply and passes the sync bus and 5 V through to
-the other board. Design files are in [`PCB/`](./PCB): EasyEDA Pro v1.0,
+the other board. Design files are in [`PCB/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_4_screens/PCB): EasyEDA Pro v1.0,
 **98.3 × 29.7 mm**, 2 layers.
 
 <img src="./PCB/3D_PCB2_2026-08-16.png" width="420">
@@ -320,8 +320,9 @@ follows whatever it broadcasts.
 
 ## Power
 
-Not measured on this build. The [24-round-screen
-version](../digital_clock_clock_24_24_round_screens/TECHNICAL.md#power) draws
+Not measured on this build. The
+[24-round-screen version](../digital_clock_clock_24_24_round_screens/TECHNICAL.md#power)
+draws
 ~150 mA per board for three 240×240 panels; two 320×240 panels are a similar
 total area, so expect the same order and **measure before sizing a supply**.
 Size for inrush rather than the average — panels striking and the master
@@ -329,7 +330,7 @@ associating to Wi-Fi both land at switch-on.
 
 ## Rough BOM
 
-- 2 × Custom PCB (see [`PCB/`](./PCB))
+- 2 × Custom PCB (see [`PCB/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_4_screens/PCB))
 - 2 × Seeed XIAO ESP32-S3
 - 2 × MP1584EN module
 - 4 × 4.0″ 320×240 ILI9342 SPI panel, 14-pin header

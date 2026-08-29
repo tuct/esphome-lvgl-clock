@@ -1,5 +1,14 @@
 # Digital Clock Clock 24
 
+<div class="site-only-hide" markdown="1">
+
+### 🕐 [**Open the live site → tuct.github.io/esphome-lvgl-clock**](https://tuct.github.io/esphome-lvgl-clock/)
+
+The whole wall running in your browser, the pattern editor, and every page below
+with search. Same engine as the firmware — nothing to install.
+
+</div>
+
 A **physical [ClockClock 24](https://clockclock.com/)** — a digital clock built
 out of twenty-four little analogue ones, where the hands sweep into position to
 form the digits and spend the time in between doing something else entirely.
@@ -167,4 +176,4 @@ clock styles, if you just want a clock on a panel:
 
 → [**Component reference**](./components/lvgl_clock/README.md) ·
 [**`examples/`**](./examples/README.md) — ready-to-flash single-board configs ·
-[**Writing a choreography in code**](./tools/clockclock24-sim/README.md)
+[**Writing a choreography in code**](./tools/clockclock24-sim/writing-a-mode.md)

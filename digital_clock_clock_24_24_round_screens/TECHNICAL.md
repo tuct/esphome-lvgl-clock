@@ -54,7 +54,7 @@ with the sync UART either.
 
 A carrier board — one per wall column — that takes a XIAO ESP32-S3, breaks out
 the three panel headers, regulates the panel supply and passes the sync bus and
-5 V through to the next board. Design files are in [`PCB/`](./PCB) — **board
+5 V through to the next board. Design files are in [`PCB/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_24_round_screens/PCB) — **board
 revision v1.1**, **34 × 131.6 mm**, 2 layers.
 
 <img src="./PCB/3D_PCB3_2026-08-25.png" width="260" align="right">
@@ -80,7 +80,7 @@ revision v1.1**, **34 × 131.6 mm**, 2 layers.
 > [assembly photo](./BUILD.md#hardware-assembly), because their pass-through is a pair of
 > 3-pin headers rather than one 4-pin.
 
-Superseded files are kept in [`PCB/old/`](./PCB/old).
+Superseded files are kept in [`PCB/old/`](https://github.com/tuct/esphome-lvgl-clock/tree/main/digital_clock_clock_24_24_round_screens/PCB/old).
 
 Upload the gerber zip as-is to JLCPCB or any EasyEDA-compatible fab — 2-layer,
 1.6 mm, no controlled impedance or other special process. The silkscreen has a
