@@ -220,7 +220,8 @@ fitting; thin black walls leak too.
 - **Solid infill for the walls.** The vertical faces are thin, and sparse infill
   there leaks light between the panels.
 
-Otherwise an undemanding print: no supports, nothing structural, any material.
+**Face down on the plate, no supports** &mdash; so the build sheet's texture is
+the finish on the visible front. Nothing structural, any material.
 
 > `.obj` rather than `.stl` — PrusaSlicer, OrcaSlicer and Cura all import it
 > directly.

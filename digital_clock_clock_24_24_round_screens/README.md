@@ -125,8 +125,8 @@ holds the eight carrier boards at the right spacing. Files are in
 
 | File | |
 |---|---|
-| `ClockClock24_full.obj` | The case in **one piece**. Needs a **Prusa XL-sized bed or bigger** |
-| `ClockClock24_a.obj` + `ClockClock24_b.obj` | The same case **split in two**, for a normal printer. Print both and join |
+| `ClockClock24_full.obj` | The case in **one piece**, 365.5 × 149 × 40 mm. Needs a **Prusa XL-sized bed or bigger** — and at 365.5 mm it is longer than the XL's 360 mm axis, so **rotate it 45° on the plate** |
+| `ClockClock24_a.obj` + `ClockClock24_b.obj` | The same case **split in two**, 183 × 149 × 40 mm each — fits a 250 × 210 bed. Print both and join |
 | `clockclock24.f3d` | Fusion 360 source, if you want to change it |
 
 **Print it opaque.** This is the one setting that matters, and it is not about
@@ -141,8 +141,9 @@ glows around every cutout instead of showing 24 clean discs on black. So:
 Dark filament helps but does not replace either of those — black PLA printed
 thin still glows.
 
-Beyond that it is an undemanding print: no supports, no bridging worth worrying
-about, and nothing structural. Any material you like.
+**Face down on the plate, no supports.** The visible face prints against the
+build sheet, so whatever texture that sheet has is the finish you get on the
+front. Nothing structural, no fine detail, any material you like.
 
 > `.obj` rather than `.stl` — PrusaSlicer, OrcaSlicer and Cura all import it
 > directly.
