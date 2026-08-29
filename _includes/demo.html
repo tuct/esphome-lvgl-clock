@@ -1,40 +1,48 @@
 {%- comment -%}
-  A live ClockClock 24, cycling its choreographies, driven by the SAME engine
-  the firmware uses - engine.js and wall.js are loaded straight from the
-  sandbox, not copied. If a mode changes there it changes here.
+  A live ClockClock 24 on the front page.
+
+  This mounts the REAL Lovelace card - the same custom element the Home
+  Assistant add-on and the pattern editor use, loaded from the same five source
+  files the add-on's bundle concatenates. It used to hand-roll its own canvas
+  renderer on top of the shared engine, which made three drawings of the same
+  wall in one repo; now there is one.
 {%- endcomment -%}
 <div class="cc-demo">
-  <canvas id="cc-demo-canvas" width="1280" height="480" aria-label="A ClockClock 24 wall running its choreographies"></canvas>
+  <div id="cc-demo-stage"></div>
   <p class="cc-demo-caption">
     <label for="cc-demo-select">mode</label>
     <select id="cc-demo-select" aria-label="Choose a mode"></select>
-    <span id="cc-demo-mode">time</span>
-    <a href="{{ '/tools/clockclock24-sim/' | relative_url }}"><strong>open the sandbox &amp; pattern editor →</strong></a>
+    <span id="cc-demo-mode">showreel</span>
+    <a href="{{ '/tools/clockclock24-sim/' | relative_url }}"><strong>open the pattern editor &rarr;</strong></a>
   </p>
 </div>
 
 <script src="{{ '/tools/clockclock24-sim/engine.js' | relative_url }}"></script>
 <script src="{{ '/tools/clockclock24-sim/wall.js' | relative_url }}"></script>
+<script src="{{ '/tools/clockclock24-sim/pattern.js' | relative_url }}"></script>
+<script src="{{ '/homeassistant/cards/card.js' | relative_url }}"></script>
 <script>
 (function () {
   var C = window.CC;
-  var cv = document.getElementById("cc-demo-canvas");
-  if (!C || !cv || !cv.getContext) return;      // no engine, no demo - fail quiet
-  var ctx = cv.getContext("2d");
-
-  var wall = new C.Wall();
-  wall.transitionMs = 3000;
-  var now = performance.now();
-  var d = new Date();
-  wall.setDigits([Math.floor(d.getHours() / 10), d.getHours() % 10,
-                  Math.floor(d.getMinutes() / 10), d.getMinutes() % 10], now);
+  var stage = document.getElementById("cc-demo-stage");
+  if (!C || !stage || !window.customElements.get("clockclock24-card")) return;  // fail quiet
 
   // The showreel. `time` between each so the sweep into and out of a
-  // choreography is on show too - that transition is half the point.
-  var REEL = ["time", "wave", "time", "wind", "rotating_maze", "time",
-              "zipper", "mirror_wave", "time", "spiral", "love"];
-  var HOLD_MS = 9000;
-  var at = 0, nextAt = now + 4000;
+  // choreography is on show too - that transition is half the point. The card
+  // runs this natively: a window opens every `cycle_interval`, lasts `window`,
+  // and it returns to the clock in between.
+  var REEL = ["wave", "wind", "rotating_maze", "zipper", "mirror_wave", "spiral", "love"];
+
+  var card = document.createElement("clockclock24-card");
+  card.setConfig({
+    type: "custom:clockclock24-card",
+    mode: "cycle", cycle: REEL,
+    cycle_interval: 18, window: 9, transition: 3000,
+    // A gap the real wall does not have: on a landing page the HH:MM grouping
+    // is what makes it read as a clock at a glance.
+    digit_gap: 0.35
+  });
+  stage.appendChild(card);
 
   // Build the picker from the engine's own mode list, so a mode added to the
   // sandbox turns up here without anyone remembering to add it twice.
@@ -55,60 +63,12 @@
     sel.appendChild(o);
   });
   sel.value = "auto";
+
   sel.addEventListener("change", function () {
-    if (sel.value === "auto") {
-      // Pick up the reel from where it was rather than restarting it.
-      nextAt = performance.now();
-      return;
-    }
-    wall.setMode(sel.value, performance.now());
-    label.textContent = sel.value;
+    // setMode, not setConfig: rebuilding restarts the animation from the
+    // card's starting pose, and this is an analogue clock - it cannot jump.
+    card.setMode(sel.value === "auto" ? "cycle" : sel.value);
+    label.textContent = sel.value === "auto" ? "showreel" : sel.value;
   });
-
-  function drawClock(cx, cy, r, a0, a1) {
-    var w = Math.max(2, r / 8);
-    ctx.strokeStyle = "#fff"; ctx.fillStyle = "#fff";
-    ctx.lineWidth = w; ctx.lineCap = "butt";
-    [a0, a1].forEach(function (a) {
-      var rad = (a - 90) * Math.PI / 180;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + Math.cos(rad) * r, cy + Math.sin(rad) * r);
-      ctx.stroke();
-    });
-    ctx.beginPath(); ctx.arc(cx, cy, w / 2, 0, Math.PI * 2); ctx.fill();
-  }
-
-  function render() {
-    var W = cv.width, H = cv.height;
-    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-    var gap = 22;
-    var cell = Math.min((W - gap * 3 - 40) / C.WALL_COLS, (H - 40) / C.WALL_ROWS);
-    var r = cell * 0.46;
-    var total = cell * C.WALL_COLS + gap * 3;
-    var x0 = (W - total) / 2 + cell / 2, y0 = (H - cell * C.WALL_ROWS) / 2 + cell / 2;
-    for (var c = 0; c < C.NUM_CLOCKS; c++) {
-      var p = C.wallPos(c);
-      drawClock(x0 + p.col * cell + Math.floor(p.col / 2) * gap, y0 + p.row * cell, r,
-                wall.cur[c * 2], wall.cur[c * 2 + 1]);
-    }
-  }
-
-  var last = performance.now();
-  function loop(t) {
-    var dt = Math.min((t - last) / 1000, 0.1);   // a backgrounded tab must not leap
-    last = t;
-    // Only the showreel advances on its own; a chosen mode stays chosen.
-    if (sel.value === "auto" && t >= nextAt) {
-      at = (at + 1) % REEL.length;
-      nextAt = t + HOLD_MS;
-      wall.setMode(REEL[at], t);
-      label.textContent = REEL[at];
-    }
-    wall.frame(t, dt);
-    render();
-    requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
 })();
 </script>

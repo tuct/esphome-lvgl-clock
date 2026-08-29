@@ -6,7 +6,8 @@
 #
 #   app/www/ui/             the control panel - index.html, style.css, app.js
 #   app/www/sim/            the engine, the wall and the pattern model, which
-#                           the add-on's page loads directly
+#                           the add-on's pages load directly (three .js files -
+#                           the sandbox's own page is not part of the add-on)
 #   app/www/cards/          the same, plus the Lovelace cards - the add-on's
 #                           page instantiates the EDITOR CARD itself rather
 #                           than reimplementing it
@@ -35,7 +36,11 @@ rm -rf app/www
 mkdir -p app/www/sim app/www/cards app/www/ui
 
 cp ui/index.html ui/display.html ui/style.css ui/app.js ui/display.js app/www/ui/
-cp "$SIM"/index.html "$SIM"/engine.js "$SIM"/wall.js "$SIM"/pattern.js app/www/sim/
+# The three engine files only. The sandbox's own index.html is NOT staged: the
+# add-on's pages load engine/wall/pattern directly and never open that page, and
+# it now loads the cards by relative path from the repo root - a path that does
+# not exist inside app/, so shipping it would ship a broken page.
+cp "$SIM"/engine.js "$SIM"/wall.js "$SIM"/pattern.js app/www/sim/
 cp cards/card.js cards/editor-card.js app/www/cards/
 
 # The Lovelace bundle is the same files CONCATENATED, not copied: there is

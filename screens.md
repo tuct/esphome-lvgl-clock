@@ -59,6 +59,28 @@ instead — the same clock, in two rooms.
 
 → [Displays, in full](./homeassistant/DOCS.md#displays)
 
+## Your own patterns, on a screen
+
+A **pattern** — 24 poses and motions you drew yourself — is not just for the
+wall. Save one in the add-on's editor and its name becomes a mode here: pick it
+as a display's **Mode**, or drop it into a display's **cycle list** beside
+`wave` and `spiral`. No hardware is involved at any point.
+
+For a dashboard card, **Card YAML** in the editor gives you the whole recipe:
+
+```yaml
+type: custom:clockclock24-card
+patterns:
+  fan: "fan:AAAIHh4K5ggeHhTcCB4eHt..."
+mode: cycle
+cycle: [wave, fan, wind]
+```
+
+The pattern travels inside the card's own configuration, so the card needs
+nothing at runtime — no wall, no add-on, no network.
+
+→ [The pattern editor and its library](./homeassistant/DOCS.md#the-library)
+
 ## Without Home Assistant
 
 **[The project site](https://tuct.github.io/esphome-lvgl-clock/)** runs the same

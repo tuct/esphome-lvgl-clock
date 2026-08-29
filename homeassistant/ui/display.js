@@ -35,6 +35,20 @@
   let boardId = q.get("board") || null;
   let title = "";
 
+  // Every saved pattern, by name, in the shape the card wants. A display can
+  // name one as its mode or drop it into its cycle list exactly as the wall
+  // does, so the names have to resolve to something before the card is built.
+  async function loadPatterns() {
+    try {
+      const r = await fetch("api/patterns").then(x => x.json());
+      const out = {};
+      for (const p of r.patterns || []) out[p.name] = p.text;
+      if (Object.keys(out).length) cfg.patterns = out;
+    } catch (_) {
+      // A display that cannot reach the library still tells the time.
+    }
+  }
+
   async function loadSaved(id) {
     const r = await fetch("api/displays").then(x => x.json());
     const d = (r.displays || []).find(x => x.id === id);
@@ -74,7 +88,18 @@
   function mount() {
     if (card) return;
     card = document.createElement("clockclock24-card");
-    card.setConfig(cfg);
+    try {
+      card.setConfig(cfg);
+    } catch (err) {
+      // Almost always a pattern that has since been deleted from the library.
+      // A tablet on a wall should fall back to telling the time and say why,
+      // not sit black until somebody notices and opens the add-on.
+      note.textContent = "Falling back to the clock — " + err.message;
+      cfg.mode = "time";
+      cfg.cycle = (cfg.cycle || []).filter(
+        m => window.CC.MODES[m] || (cfg.patterns && cfg.patterns[m]));
+      card.setConfig(cfg);
+    }
     host.appendChild(card);
   }
 
@@ -115,6 +140,9 @@
   }
 
   (async () => {
+    // Patterns first: the card refuses a config naming a mode it has never
+    // heard of, and a display's mode may well be a pattern's name.
+    await loadPatterns();
     if (q.get("d")) {
       try { await loadSaved(q.get("d")); }
       catch (err) { note.textContent = "Display not found — " + err.message; }

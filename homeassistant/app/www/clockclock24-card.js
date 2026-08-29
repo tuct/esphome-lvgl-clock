@@ -1237,6 +1237,12 @@ window.CC = {
     digit_gap: 0,               // extra space between digits, in clock widths
     fullscreen: false,          // fill the viewport height instead of flowing
     pattern: null,              // "<name>:<base64>" from the sandbox
+    // Named patterns, { name: "<name>:<base64>" }. A name here is usable
+    // anywhere a mode name is - `mode: fan`, or `fan` inside `cycle:` - which
+    // is what makes a pattern a first-class mode on a screen, exactly as it is
+    // on the wall. `pattern:` above is the single-pattern shorthand and still
+    // works; it is simply the one named `pattern`.
+    patterns: null,
     time_entity: null,          // optional; default is the browser's clock
   };
 
@@ -1245,15 +1251,30 @@ window.CC = {
       this._cfg = Object.assign({}, DEFAULTS, config || {});
       if (typeof this._cfg.cycle === "string") this._cfg.cycle = [this._cfg.cycle];
 
-      // A pattern is decoded once, here, rather than every frame.
-      this._pattern = null;
-      if (this._cfg.pattern) {
-        this._pattern = C.pattern.parseESPHome(this._cfg.pattern);
-        if (!this._pattern)
-          throw new Error("clockclock24-card: `pattern` is not a pattern string from the sandbox");
+      // Patterns are decoded once, here, rather than every frame. Both spellings
+      // land in the same table, so the rest of the card only knows about names.
+      this._patterns = {};
+      const add = (name, text) => {
+        const p = C.pattern.parseESPHome(text);
+        if (!p)
+          throw new Error(`clockclock24-card: pattern \`${name}\` is not a pattern string`);
+        this._patterns[name] = p;
+      };
+      if (this._cfg.pattern) add("pattern", this._cfg.pattern);
+      if (this._cfg.patterns)
+        for (const [name, text] of Object.entries(this._cfg.patterns)) add(name, text);
+      this._patternLoaded = null;   // which name is currently in C.pattern
+
+      // Catch a name that will never draw at CONFIG time rather than leaving a
+      // still wall at 3am with nothing in the log to say why.
+      const named = [this._cfg.mode, ...(this._cfg.cycle || [])];
+      for (const n of named) {
+        if (n === "cycle" || n === "time" || C.MODES[n]) continue;
+        if (!this._patterns[n])
+          throw new Error(
+            `clockclock24-card: \`${n}\` is neither a mode nor one of the patterns ` +
+            `given (${Object.keys(this._patterns).join(", ") || "none"})`);
       }
-      if (this._cfg.mode === "pattern" && !this._pattern)
-        throw new Error("clockclock24-card: mode `pattern` needs a `pattern:` string");
 
       this._build();
     }
@@ -1316,10 +1337,14 @@ window.CC = {
     // and this card exists to be an analogue clock, so it cannot jump. Anything
     // following a real wall must come through here instead.
     setMode(name, pattern) {
+      // Following a wall hands us the slot's text, which has no name of its own
+      // here - it lands under `pattern`, the same key the shorthand config uses.
       if (pattern !== undefined && pattern !== this._cfg.pattern) {
         this._cfg.pattern = pattern;
-        this._pattern = pattern ? C.pattern.parseESPHome(pattern) : null;
-        this._patternLoaded = false;
+        const p = pattern ? C.pattern.parseESPHome(pattern) : null;
+        if (p) this._patterns.pattern = p;
+        else delete this._patterns.pattern;
+        this._patternLoaded = null;
       }
       if (name === this._cfg.mode && name !== "pattern") return;
       this._cfg.mode = name;
@@ -1340,16 +1365,22 @@ window.CC = {
       }
     }
 
-    // `pattern` is drawn by the pattern mode, which reads the decoded spec.
+    // A name is either a choreography or one of our patterns. Patterns all draw
+    // through the one `pattern` mode, so this also swaps the spec in when the
+    // name changes - a cycle can list several and they take turns.
     _modeFor(name) {
-      if (name !== "pattern") return name;
-      this._loadPattern();
-      return "pattern";
+      if (C.MODES[name] && name !== "pattern") return name;
+      if (this._patterns[name]) {
+        this._loadPattern(name);
+        return "pattern";
+      }
+      return name;
     }
 
-    _loadPattern() {
-      if (!this._pattern || this._patternLoaded) return;
-      this._pattern.clocks.forEach((c, i) => {
+    _loadPattern(name) {
+      const p = this._patterns[name];
+      if (!p || this._patternLoaded === name) return;
+      p.clocks.forEach((c, i) => {
         const s = C.pattern.get(i);
         s.h0 = c.h0; s.h1 = c.h1;
         s.dirA = c.dir0; s.dirB = c.dir1;
@@ -1357,7 +1388,7 @@ window.CC = {
         s.spdB = { mode: "fixed", v: c.v1 };
       });
       C.pattern.toHome(0);
-      this._patternLoaded = true;
+      this._patternLoaded = name;
     }
 
     _pushTime(now) {
@@ -1904,11 +1935,19 @@ window.CC = {
       ["load", "send"].forEach(id => { this.$(id).disabled = !on; });
       if (!this._cfg.entity) this._note("Set `entity:` to a Pattern text entity to load and send.");
     }
-    _load() {
-      const st = this._hass && this._hass.states[this._cfg.entity];
-      if (!st) { this._note("Entity not found."); return; }
-      const got = P.parseESPHome(st.state);
-      if (!got) { this._note("That entity does not hold a pattern."); return; }
+    // ---- what is on the canvas, as text ------------------------------------
+    // Public, because a pattern now has somewhere to go that is not an entity:
+    // the add-on keeps a library, and the panel around this card drives it. The
+    // card stays usable on its own in a dashboard either way.
+    get patternText() { return P.toESPHome(this._cfg.name); }
+
+    set patternText(text) {
+      if (!this.applyPattern(text)) throw new Error("not a pattern string");
+    }
+
+    applyPattern(text, where) {
+      const got = P.parseESPHome(text || "");
+      if (!got) { this._note("That does not hold a pattern."); return false; }
       got.clocks.forEach((c, i) => {
         const s = P.get(i);
         s.h0 = c.h0; s.h1 = c.h1; s.dirA = c.dir0; s.dirB = c.dir1;
@@ -1916,7 +1955,14 @@ window.CC = {
       });
       P.toHome(this._t);
       this._sync();
-      this._note(`Loaded '${got.name}' from the wall.`);
+      this._note(`Loaded '${got.name}'${where ? " " + where : ""}.`);
+      return true;
+    }
+
+    _load() {
+      const st = this._hass && this._hass.states[this._cfg.entity];
+      if (!st) { this._note("Entity not found."); return; }
+      this.applyPattern(st.state, "from the wall");
     }
     _send() {
       const value = P.toESPHome(this._cfg.name);

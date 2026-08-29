@@ -58,8 +58,11 @@ across the whole wall is one number instead of eight:
 row 0 resolved speeds:  1.00  0.88  0.76  0.64  0.52  0.40  0.28  0.16
 ```
 
-Eight patterns live on the master at a time, under names you choose, and those
-names go straight into a cycle list beside `wave` and `spiral`.
+Patterns are saved in the add-on under names you choose, and those names go
+straight into a cycle list beside `wave` and `spiral`. Eight of them fit on the
+master at a time; the library itself is not limited to eight, and it needs no
+wall at all — the same pattern runs on
+[a tablet or a dashboard card](./screens.md#your-own-patterns-on-a-screen).
 
 That **nothing is reflashed, not even the master** is the point of the whole
 master/slave split: the seven listeners carry no network stack precisely so they

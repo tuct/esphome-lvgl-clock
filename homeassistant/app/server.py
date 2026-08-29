@@ -34,6 +34,7 @@ OPTIONS_PATH = os.environ.get("CC24_OPTIONS", "/data/options.json")
 # updates, and unlike /config it is nobody else's business.
 DATA_DIR = os.environ.get("CC24_DATA", "/data")
 DISPLAYS_PATH = os.path.join(DATA_DIR, "displays.json")
+PATTERNS_PATH = os.path.join(DATA_DIR, "patterns.json")
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 CORE_API = os.environ.get("CC24_CORE_API", "http://supervisor/core/api")
 CORE_WS = os.environ.get("CC24_CORE_WS", "ws://supervisor/core/websocket")
@@ -405,6 +406,63 @@ def save_displays(items):
     return clean
 
 
+# ---- the pattern library --------------------------------------------------
+# Patterns used to exist only in the master's eight slots, which meant you
+# needed a wall before you could keep one. They live here instead: named, any
+# number of them, and readable by a display or a dashboard card that has no
+# hardware behind it at all. Sending one to a slot is then a copy, not a move.
+
+# The firmware's `char name[16]`, minus the terminator. A name that fits here
+# survives the round trip to the wall and back unchanged.
+PATTERN_NAME_MAX = 15
+# `<name>:<base64>`. The master's text entities cap at 255, and a 24-clock
+# pattern packs to about 164, so this is the entity limit rather than ours.
+PATTERN_TEXT_MAX = 255
+PATTERN_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]*$")
+
+
+def load_patterns():
+    try:
+        with open(PATTERNS_PATH, "r", encoding="utf-8") as fh:
+            got = json.load(fh)
+        return got if isinstance(got, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_patterns(items):
+    if not isinstance(items, list):
+        raise ValueError("expected a list of patterns")
+    if len(items) > 64:
+        raise ValueError("64 patterns is the limit")
+    clean, seen = [], set()
+    for i, raw in enumerate(items):
+        if not isinstance(raw, dict):
+            raise ValueError("pattern %d is not an object" % i)
+        name = str(raw.get("name") or "").strip()
+        text = str(raw.get("text") or "").strip()
+        if not PATTERN_NAME_RE.match(name) or len(name) > PATTERN_NAME_MAX:
+            raise ValueError(
+                "name %r must be 1-%d characters, letters, digits, space, - or _"
+                % (name, PATTERN_NAME_MAX))
+        # Names ARE the reference - a cycle list says `fan`, not slot 3 - so two
+        # patterns called the same thing is a list that cannot be resolved.
+        if name.lower() in seen:
+            raise ValueError("two patterns are both called %r" % name)
+        seen.add(name.lower())
+        if ":" not in text or len(text) > PATTERN_TEXT_MAX:
+            raise ValueError("pattern %r: text must be `<name>:<data>`, "
+                             "at most %d characters" % (name, PATTERN_TEXT_MAX))
+        clean.append({"id": str(raw.get("id") or "p%d" % (i + 1))[:32],
+                      "name": name, "text": text})
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = PATTERNS_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(clean, fh, indent=1)
+    os.replace(tmp, PATTERNS_PATH)
+    return clean
+
+
 CARD_URL = "/local/" + CARD
 
 
@@ -525,6 +583,9 @@ class Handler(BaseHTTPRequestHandler):
         if tail == "api/displays":
             return self._send(200, json.dumps({"displays": load_displays()}))
 
+        if tail == "api/patterns":
+            return self._send(200, json.dumps({"patterns": load_patterns()}))
+
         if tail == "api/card":
             path = install_card()
             out = {"installed": bool(path), "file": CARD, "url": CARD_URL,
@@ -544,6 +605,9 @@ class Handler(BaseHTTPRequestHandler):
             if tail == "api/displays":
                 return self._send(200, json.dumps(
                     {"displays": save_displays(body.get("displays"))}))
+            if tail == "api/patterns":
+                return self._send(200, json.dumps(
+                    {"patterns": save_patterns(body.get("patterns"))}))
             if tail == "api/card/register":
                 if not install_card():
                     raise RuntimeError("the bundle is missing - rebuild the add-on")

@@ -111,13 +111,13 @@ decisions:
 | | |
 |---|---|
 | **Follows** | Which board it watches, or nothing. With *follow its mode and colours* on it mirrors the wall; off, it runs independently |
-| **Mode** | A fixed choreography, or `cycle`. No `temp` (there is no sensor behind a browser) and no `pattern` (the slots live on the master) |
+| **Mode** | A fixed choreography, **one of your saved patterns by name**, or `cycle`. No `temp` — there is no sensor behind a browser |
 | **Cycle every** | How often a window opens |
 | **Window** | Seconds of choreography per window |
 | **Movement** | `opposite` / `clockwise` / `counter` / `long` |
 | **Transition** | Sweep time, and the fade into a mode |
 | **Mode speed** | Choreography rate, ×1 is the base |
-| **Cycle list** | Its own rotation — drag to reorder, × to remove, Add to append. Empty means the card's own six |
+| **Cycle list** | Its own rotation — drag to reorder, × to remove, Add to append. **Patterns go in it by name**, beside `wave` and `spiral`, exactly as on the wall. Empty means the card's own six |
 | **Look** | Hands, background, faces, digit gap, and whether it returns to the time between windows. A hall tablet and a desk screen do not have to match |
 
 `digit_gap: 0` matches the real wall, which is 24 evenly-spaced panels.
@@ -149,6 +149,27 @@ choreographies, the same easing, the same 24-clock geometry.
 and rates. Twenty-four pairs of hands turning at slightly different speeds is
 not something you can read off the canvas, and the controls only ever show the
 one you have selected.
+
+### The library
+
+**Save** keeps the pattern in the add-on under the name in the header. That is
+what makes a pattern usable **without a wall**: the eight slots on the master
+need hardware, this does not, and a display or a dashboard card reads from here.
+
+| | |
+|---|---|
+| **Save** | Store it under its name. Saving the same name again replaces it |
+| **Open** | Load a saved pattern back onto the canvas |
+| **Delete** | Remove it. Anything referring to it by name falls back to the clock |
+| **Card YAML** | The recipe for a dashboard card that runs it, on your clipboard |
+
+Names are how everything refers to a pattern — a display's mode, an entry in a
+cycle list — so two patterns cannot share one, and the name is capped at 15
+characters to match the `char name[16]` the firmware carries.
+
+**Send to wall** is separate and still there: it copies the pattern into one of
+the master's eight slots, which pushes it to all seven listeners. Saving and
+sending are different things, and you can do either without the other.
 
 ### Selection
 
@@ -310,7 +331,8 @@ type: custom:clockclock24-card
 
 | Option | Default | |
 | --- | --- | --- |
-| `mode` | `cycle` | A mode name, `cycle` to rotate, or `pattern` |
+| `mode` | `cycle` | A mode name, the name of one of your `patterns`, or `cycle` to rotate |
+| `patterns` | — | `{ name: "<string>" }`. Each name then works anywhere a mode name does, including inside `cycle` |
 | `cycle` | six choreographies | The rotation, in order. Repeats count |
 | `cycle_interval` | `60` | Seconds between windows opening |
 | `window` | `35` | Seconds of choreography per window |

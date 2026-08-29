@@ -111,17 +111,36 @@
     <div class="panel-head">
       <h2>Pattern editor</h2>
       <div class="headctl">
-        <label for="slot">Write to</label>
-        <div class="selwrap"><select id="slot"></select></div>
         <label for="pname">Name</label>
         <input id="pname" class="short" value="pattern" spellcheck="false">
+        <span class="hidden" id="slotwrap">
+          <label for="slot">Wall slot</label>
+          <div class="selwrap"><select id="slot"></select></div>
+        </span>
       </div>
     </div>
+
+    <div class="field" id="f-library">
+      <div class="flabel">Library<span class="fnote">saved here in the add-on — no wall needed</span></div>
+      <div class="addrow">
+        <div class="selwrap"><select id="libpick"></select></div>
+        <button class="ghost" id="libopen">Open</button>
+        <button class="primary" id="libsave">Save</button>
+        <button class="ghost" id="libdelete">Delete</button>
+        <span class="spacer"></span>
+        <button class="ghost small" id="libyaml">Card YAML</button>
+      </div>
+      <p class="hint" id="libnote"></p>
+      <textarea id="libout" spellcheck="false" style="display:none"></textarea>
+    </div>
+
     <div id="host" class="editorhost"></div>
     <p class="note">
-      <b>Send to wall</b> writes the string into that slot. The master saves it
-      to flash and pushes it to all seven listeners — nothing is recompiled and
-      nothing is reflashed. <span class="warn">It overwrites what was there.</span>
+      <b>Save</b> keeps the pattern in the add-on under its name, where a
+      display or a dashboard card can use it like any other mode.
+      <b>Send to wall</b> additionally writes it into a slot on the master,
+      which pushes it to all seven listeners — nothing is recompiled and nothing
+      is reflashed. <span class="warn">Both overwrite what was there.</span>
     </p>
   </section>
 

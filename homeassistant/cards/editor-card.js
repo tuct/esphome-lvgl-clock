@@ -424,11 +424,19 @@
       ["load", "send"].forEach(id => { this.$(id).disabled = !on; });
       if (!this._cfg.entity) this._note("Set `entity:` to a Pattern text entity to load and send.");
     }
-    _load() {
-      const st = this._hass && this._hass.states[this._cfg.entity];
-      if (!st) { this._note("Entity not found."); return; }
-      const got = P.parseESPHome(st.state);
-      if (!got) { this._note("That entity does not hold a pattern."); return; }
+    // ---- what is on the canvas, as text ------------------------------------
+    // Public, because a pattern now has somewhere to go that is not an entity:
+    // the add-on keeps a library, and the panel around this card drives it. The
+    // card stays usable on its own in a dashboard either way.
+    get patternText() { return P.toESPHome(this._cfg.name); }
+
+    set patternText(text) {
+      if (!this.applyPattern(text)) throw new Error("not a pattern string");
+    }
+
+    applyPattern(text, where) {
+      const got = P.parseESPHome(text || "");
+      if (!got) { this._note("That does not hold a pattern."); return false; }
       got.clocks.forEach((c, i) => {
         const s = P.get(i);
         s.h0 = c.h0; s.h1 = c.h1; s.dirA = c.dir0; s.dirB = c.dir1;
@@ -436,7 +444,14 @@
       });
       P.toHome(this._t);
       this._sync();
-      this._note(`Loaded '${got.name}' from the wall.`);
+      this._note(`Loaded '${got.name}'${where ? " " + where : ""}.`);
+      return true;
+    }
+
+    _load() {
+      const st = this._hass && this._hass.states[this._cfg.entity];
+      if (!st) { this._note("Entity not found."); return; }
+      this.applyPattern(st.state, "from the wall");
     }
     _send() {
       const value = P.toESPHome(this._cfg.name);

@@ -46,17 +46,18 @@
 .cc-demo {
   margin: 0 0 2rem;
 
-  canvas {
-    display: block;
-    // 70% of the content column: at full width the wall dominated the page and
-    // pushed everything that explains it below the fold. The aspect ratio does
-    // the rest, so this is the only number to change.
+  // The demo is the real Lovelace card, so the sizing goes on its host element
+  // rather than on a canvas of our own - the card sizes its own canvas from
+  // `digit_gap` and would fight a fixed aspect-ratio here.
+  //
+  // 70% of the content column: at full width the wall dominated the page and
+  // pushed everything that explains it below the fold.
+  #cc-demo-stage {
     width: 70%;
     max-width: 100%;
-    height: auto;
-    aspect-ratio: 8 / 3;
-    background: #000;
     border-radius: 8px;
+    overflow: hidden;
+    background: #000;
   }
 }
 

@@ -169,15 +169,20 @@
     // picker, and a page that hides the only way to choose a board when no
     // board is chosen is a page you cannot recover from.
     $("control").classList.toggle("nodevice", !board);
-    $("editorpanel").classList.toggle("hidden", !board);
+    // The editor STAYS, with or without a wall. A pattern is saved to the
+    // add-on's own library, and a display or a dashboard card can run it with
+    // no hardware anywhere - so hiding the editor when no board is selected hid
+    // the only thing on this page that needs nothing.
+    $("slotwrap").classList.toggle("hidden", !board);
 
     if (!board) {
-      // Stop the animation loops rather than leaving them running behind a
-      // hidden panel, burning a frame budget nobody is looking at.
-      if (card) { card.remove(); card = null; }
+      // Stop the preview loop rather than leaving it running behind a hidden
+      // panel, burning a frame budget nobody is looking at. The editor keeps
+      // running: it is still usable.
       if (preview) { preview.remove(); preview = null; previewKey = ""; }
       $("preview").classList.add("empty");
       $("wallhint").textContent = "";
+      if (!card) mountEditor();
       return;
     }
     syncPreview();
@@ -315,13 +320,115 @@
   }
 
   function mountEditor() {
+    // Remounting throws away what is on the canvas, so carry it across. Picking
+    // a different wall slot should not silently discard the pattern you were
+    // half way through drawing.
+    const keep = card ? card.patternText : null;
     if (card) card.remove();
     card = document.createElement("clockclock24-editor-card");
     card.dataset.entity = $("slot").value;
     card.setConfig({ entity: $("slot").value || null, name: $("pname").value || "pattern" });
     $("host").appendChild(card);
     card.hass = hass;
+    if (keep) try { card.patternText = keep; } catch (_) {}
   }
+
+  // ---- the pattern library -----------------------------------------------
+  // Patterns saved in the add-on rather than in a slot on the master. This is
+  // what lets a display or a dashboard card run one with no hardware at all.
+  let library = [];
+
+  const libNote = (t, bad) => {
+    const el = $("libnote");
+    el.textContent = t || "";
+    el.classList.toggle("warn", !!bad);
+  };
+
+  async function loadLibrary() {
+    try {
+      const r = await api("api/patterns");
+      library = r.patterns || [];
+    } catch (err) {
+      library = [];
+      libNote(`Could not read the library. ${err.message}`, true);
+    }
+    drawLibrary();
+  }
+
+  function drawLibrary() {
+    const sel = $("libpick");
+    const keep = sel.value;
+    sel.innerHTML = library.length
+      ? library.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join("")
+      : `<option value="">— nothing saved yet —</option>`;
+    if (library.some(p => p.name === keep)) sel.value = keep;
+    $("libdelete").disabled = !library.length;
+    $("libopen").disabled = !library.length;
+    $("libyaml").disabled = !library.length;
+  }
+
+  async function putLibrary(items) {
+    const r = await api("api/patterns", { patterns: items });
+    if (r.error) throw new Error(r.error);
+    library = r.patterns || [];
+    drawLibrary();
+  }
+
+  $("libsave").onclick = async () => {
+    if (!card) return;
+    const name = ($("pname").value || "").trim();
+    if (!name) { libNote("Give it a name first.", true); return; }
+    const text = card.patternText;
+    // Same name = replace. The name is how a cycle list refers to it, so two
+    // patterns called `fan` is a reference that cannot be resolved - the server
+    // refuses it, and silently making `fan (2)` would be worse.
+    const next = library.filter(p => p.name.toLowerCase() !== name.toLowerCase());
+    const replaced = next.length !== library.length;
+    next.push({ name, text });
+    try {
+      await putLibrary(next);
+      $("libpick").value = name;
+      libNote(`${replaced ? "Replaced" : "Saved"} '${name}' — ${text.length} characters. ` +
+              `Use it as a mode on a display, or in a cycle list.`);
+    } catch (err) { libNote(`Failed. ${err.message}`, true); }
+  };
+
+  $("libopen").onclick = () => {
+    const p = library.find(x => x.name === $("libpick").value);
+    if (!p || !card) return;
+    $("pname").value = p.name;
+    card.setConfig({ entity: $("slot").value || null, name: p.name });
+    try { card.patternText = p.text; libNote(`Opened '${p.name}'.`); }
+    catch (err) { libNote(`'${p.name}' does not hold a pattern.`, true); }
+  };
+
+  $("libdelete").onclick = async () => {
+    const name = $("libpick").value;
+    if (!name || !confirm(`Delete the pattern '${name}'? Any display or card ` +
+                          `using it by name will fall back to the clock.`)) return;
+    try {
+      await putLibrary(library.filter(p => p.name !== name));
+      libNote(`Deleted '${name}'.`);
+    } catch (err) { libNote(`Failed. ${err.message}`, true); }
+  };
+
+  // The dashboard card takes patterns inline, so this is the whole recipe -
+  // there is nothing to install and nothing for the card to fetch at runtime.
+  $("libyaml").onclick = () => {
+    const p = library.find(x => x.name === $("libpick").value);
+    if (!p) return;
+    const yaml =
+      `type: custom:clockclock24-card\n` +
+      `patterns:\n  ${p.name}: "${p.text}"\n` +
+      `mode: cycle\n` +
+      `cycle: [wave, ${p.name}, wind]\n`;
+    const out = $("libout");
+    out.style.display = "block";
+    out.value = yaml;
+    out.select();
+    try { navigator.clipboard.writeText(yaml); } catch (_) {}
+    libNote(`YAML for '${p.name}' — on your clipboard, and in the box below.`);
+  };
 
   // ---- data --------------------------------------------------------------
   async function refresh() {
@@ -353,6 +460,11 @@
       // rendered fine and then got rejected, and sent people looking at their
       // network instead of at the message.
       setLive("err", `<b>Could not read Home Assistant.</b> ${esc(err.message)}`);
+      // The editor needs nothing from Home Assistant - a pattern is saved to
+      // the add-on's own library - so it must still come up when this fails.
+      // render() is what mounts it, and render() is exactly what we skipped.
+      board = null;
+      render();
     }
   }
 
@@ -550,9 +662,13 @@
   // A display runs the card, not the wall: no `temp` (there is no sensor
   // behind it) and no `pattern` (the slots live on the master). Everything
   // else is the same set the wall offers, presented the same way.
+  // No `temp` (there is no sensor behind a browser) and no bare `pattern` (it
+  // means nothing without a slot). Saved patterns are appended by name instead,
+  // exactly as they are on the wall: a pattern IS a mode here.
   const DISPLAY_MODES = ["cycle", "time", "rotate_left", "flying_birds", "wave",
                          "spiral", "wind", "rotating_maze", "zipper",
                          "mirror_wave", "love"];
+  const displayModes = () => DISPLAY_MODES.concat(library.map(p => p.name));
   const INTERVALS = [30, 60, 120, 180, 300, 600, 900, 1800, 3600];
   const MOVEMENTS = ["opposite", "clockwise", "counter", "long"];
 
@@ -628,7 +744,7 @@
           <div class="flabel">Cycle list<span class="fnote">drag to reorder — empty uses the card's own six</span></div>
           <div class="taglist" data-cycle="${n}"></div>
           <div class="addrow">
-            <div class="selwrap"><select data-cycleadd="${n}">${DISPLAY_MODES
+            <div class="selwrap"><select data-cycleadd="${n}">${displayModes()
               .filter(m => m !== "cycle" && m !== "time")
               .map(m => `<option value="${m}">${esc(pretty(m))}</option>`).join("")}</select></div>
             <button class="ghost small" data-cycleaddbtn="${n}">Add</button>
@@ -669,7 +785,12 @@
               v => { d[key] = map ? map(v) : v; save(); }, what,
               () => renderDisplays());
 
-      pick("mode", DISPLAY_MODES.map(m => ({ value: m, html: esc(pretty(m)) })), d.mode, "mode");
+      const patNames = library.map(p => p.name);
+      pick("mode", displayModes().map(m => ({
+        value: m, html: esc(pretty(m)),
+        cls: patNames.includes(m) ? "pat" : "",
+        title: patNames.includes(m) ? `pattern: ${m}` : "",
+      })), d.mode, "mode");
       pick("interval", INTERVALS.map(s => ({ value: String(s), html: esc(secLabel(s)) })),
            String(d.cycle_interval), "cycle_interval", v => Number(v));
       pick("movement", MOVEMENTS.map(m => ({ value: m, html: esc(m) })), d.movement, "movement");
@@ -808,6 +929,7 @@
   if (!window.CC) {
     setLive("err", "<b>Engine missing.</b> Run <code>stage.sh</code> and rebuild the add-on.");
   } else {
+    loadLibrary();
     refresh().then(startPolling);
   }
 })();

@@ -12,16 +12,24 @@ enough that a new mode takes an evening. Here it takes a reload.
 > [pattern editor](../../homeassistant/DOCS.md#the-pattern-editor) and sent to
 > the wall with nothing recompiled. See [Modes and patterns](../../modes.md).
 
-**Open [`index.html`](./index.html) in a browser.** No server, no build step, no
-dependencies — it runs straight off the filesystem.
+**Open [`index.html`](./index.html) in a browser.** No build step and no
+dependencies — though it now needs a server rather than `file://`, because it
+loads the two cards from `homeassistant/cards/` by relative path. Anything will
+do: `python3 -m http.server` from the repo root, or the published site.
 
 It is also published with the project site, so it can be linked to and used
 without cloning anything — this folder's URL *is* the running app, and this
 README sits beside it at `README.html`.
 
+The page itself is **not a third implementation**. It mounts the same two
+custom elements the Home Assistant add-on does — `clockclock24-card` for the
+wall and `clockclock24-editor-card` for the editor — loading the same five
+source files the add-on's bundle concatenates. The front page of the site does
+the same. There is one editor in this repo, and fixing it fixes all three.
+
 ```
 tools/clockclock24-sim/
-  index.html   the wall, and the controls
+  index.html   the page: the wall, the mode chips, the editor
   engine.js    constants, glyph tables, one function per choreography
   wall.js      the mode state machine: entry blend, settle back to time
   pattern.js   the pattern editor's model: per-clock motion, relative speeds
@@ -80,34 +88,19 @@ firmware"**, and it comes off when the mode is ported. Then:
   (`turned = rate * x * x / (2 * RAMP)` while spinning up) so position stays
   continuous while speed is still changing.
 
-## Edit mode — posing by hand
+## Posing by hand
 
-Designing a picture (a cat, a letter, an arrow) by writing angle tables and
-guessing is slow. **Press `Edit`** and pose the wall directly instead:
+Designing a picture — a cat, a letter, an arrow — by writing angle tables and
+guessing is slow. Pose the wall directly instead, in the **pattern editor** on
+[the page itself](./index.html): click a clock to select it, shift-click for
+several, drag inside one to swing a hand. The controls, the selection helpers
+and the copy scopes are documented once, with the editor, in
+[the add-on's reference](../../homeassistant/DOCS.md#the-pattern-editor) — it is
+the same editor.
 
-- **The first click selects, and only selects.** Clicking a clock to look at
-  its settings used to nudge a hand by however far the pointer sat from it,
-  which quietly edited the pose every time you inspected something. Drag from
-  an **already-selected** clock to move its hands.
-- **Drag anywhere inside a clock** to swing a hand. It grabs whichever hand is
-  already nearest the pointer, so you never have to hit a 2 px line.
-- **Snaps to 15°** by default — 5°, 45° and 1° are in the dropdown. 15° is
-  usually what you want: it is the granularity the glyph tables are written at,
-  and it keeps strokes meeting cleanly at cell edges.
-- **`both hands`** drags the pair together, preserving the angle between them —
-  for rotating a whole stroke without rebuilding it.
-- **`Copy TL → all`** copies the top-left clock's two angles to all 24. The
-  fastest way to start from a uniform wall, which is what every choreography
-  wants at `t = 0`.
-- **`Park all`** clears to `PARK` (225°). Note that parked is not *off* — the
-  hands are physical, so a parked cell still shows one short diagonal. That is
-  how the real thing blanks a cell, and it is why glyphs have to read against a
-  faint diagonal background rather than black.
-- **`clock numbers`** labels each cell with its index, and the selected clock
-  is ringed.
-
-Entering edit mode pauses the animation, since otherwise the choreography
-overwrites what you just posed.
+A pose you like becomes a **pattern**, which the firmware plays as data. It is
+not a route to a new *mode*: a mode is code, and that is what the rest of this
+page is about.
 
 ## `rotating_maze`
 
