@@ -1,6 +1,7 @@
 #pragma once
 
 #include "esphome/core/helpers.h"
+#include "esphome/core/alloc_helpers.h"
 #include "esphome/core/preferences.h"
 #include <cstdint>
 #include <cstddef>
